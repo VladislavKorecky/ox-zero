@@ -21,9 +21,9 @@ Ownership of the marks does not matter. Whoever places the mark that completes a
 ## Roadmap
 
 1. Game rules, board representation, and move generation.
-2. Monte Carlo tree search and neural network.
-3. Self-play training pipeline.
-4. CLI for position analysis and play against the engine.
+2. CLI for playing the game, later extended with engine analysis and play against the engine.
+3. Monte Carlo tree search and neural network.
+4. Self-play training pipeline.
 5. GUI for interactive analysis.
 
 ## Tech stack
