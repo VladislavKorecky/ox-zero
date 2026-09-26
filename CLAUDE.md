@@ -9,6 +9,9 @@ AlphaZero engine and analysis tooling for the OXOX board game. Project descripti
 - Comment thoroughly. The author is learning the ML theory alongside the code, so connect implementation to theory: name the concept (e.g. PUCT, policy target, value head, Dirichlet noise), state the formula or paper reference, and explain *why* the operation exists, not just what it does.
 - Don't shy away from explaining non-obvious operations (tensor reshapes, masking, normalisation, backprop details). A short "how this works" comment above a tricky block is welcome, not noise.
 
+- Coordinates are `row,col`, zero-based, row 0 at the top, column 0 at the left. Same convention in the CLI, the code, and the tests. Never introduce a second one.
+- The CLI's behaviour is specified in the README's Usage section. Implement to that spec; change the spec first if it needs changing.
+
 ## Workflow
 
 - Test-driven development. For every feature: write the failing tests first, run them to confirm they fail, then implement until they pass.
