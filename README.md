@@ -26,9 +26,14 @@ Ownership of the marks does not matter. Whoever places the mark that completes a
 4. Self-play training pipeline.
 5. GUI for interactive analysis.
 
-## Tech stack
+## Development
 
-Python. Further dependencies will be documented as the implementation takes shape.
+Python 3.14, managed with [uv](https://docs.astral.sh/uv/).
+
+```bash
+uv sync          # create the virtual environment and install dependencies
+uv run pytest    # run the test suite
+```
 
 ## License
 
