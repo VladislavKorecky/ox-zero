@@ -1,4 +1,4 @@
-# oxox-zero
+# ox-zero
 
 AlphaZero engine and analysis tooling for the OXOX board game. Project description, rules, goals, and roadmap:
 
@@ -26,9 +26,9 @@ Managed with [uv](https://docs.astral.sh/uv/). Never `pip install` into the venv
 | `uv sync` | Create/update `.venv` from `uv.lock` |
 | `uv add <pkg>` / `uv add --dev <pkg>` | Add a runtime / dev dependency (updates lock) |
 | `uv run pytest` | Run the test suite |
-| `uv run python -m oxox...` | Run package code inside the venv |
+| `uv run python -m ox_zero...` | Run package code inside the venv |
 
-Layout: `src/oxox/` is the package, `tests/` mirrors it. Python 3.14 (Torch 2.14 supports it).
+Layout: `src/ox_zero/` is the package, `tests/` mirrors it. Python 3.14 (Torch 2.14 supports it).
 
 ## Gotchas
 

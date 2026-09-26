@@ -1,4 +1,4 @@
-# oxox-zero
+# ox-zero
 
 An [AlphaZero](https://arxiv.org/abs/1712.01815)-style engine for **OXOX**, a two-player board game derived from Tic-tac-toe, together with tooling for analyzing positions and studying the game.
 
@@ -30,7 +30,7 @@ Ownership of the marks does not matter. Whoever places the mark that completes a
 
 > **Not implemented yet.** This section is the design specification for the CLI (roadmap step 2). It is written as if the tool existed so that the implementation has a fixed target.
 
-The command is `oxox-zero`. Analysis commands take a position, print a human-readable report by default, and print JSON with `--json`.
+The command is `ox-zero`. Analysis commands take a position, print a human-readable report by default, and print JSON with `--json`.
 
 ### Positions and moves
 
@@ -44,10 +44,10 @@ The command is `oxox-zero`. Analysis commands take a position, print a human-rea
 
 | Command | Description |
 |---------|-------------|
-| `oxox-zero show <position>` | Render a position as a board. No engine involved. |
-| `oxox-zero analyze <position>` | Evaluate a position and score every legal move. |
-| `oxox-zero best <position>` | Print only the engine's chosen move. |
-| `oxox-zero sandbox [<position>]` | Interactive analysis board. See below. |
+| `ox-zero show <position>` | Render a position as a board. No engine involved. |
+| `ox-zero analyze <position>` | Evaluate a position and score every legal move. |
+| `ox-zero best <position>` | Print only the engine's chosen move. |
+| `ox-zero sandbox [<position>]` | Interactive analysis board. See below. |
 
 Engine flags, accepted by `analyze`, `best`, and `sandbox`:
 
@@ -64,7 +64,7 @@ Engine flags, accepted by `analyze`, `best`, and `sandbox`:
 Scores are the engine's estimated win probability for the side to move after playing that cell, as a percentage. Every legal move gets a score, shown in place on the board. Occupied cells show their mark. Cells are fixed-width so the grid keeps its shape regardless of the values.
 
 ```
-$ oxox-zero analyze 5,5 6,6 5,6
+$ ox-zero analyze 5,5 6,6 5,6
 
 O to move (3 marks on board)
 
@@ -93,7 +93,7 @@ Top 3
 If the position is already decided, the report says so instead of running the engine:
 
 ```
-$ oxox-zero analyze 5,5 6,6 5,6 5,7
+$ ox-zero analyze 5,5 6,6 5,6 5,7
 Game over: O wins (X O X at 5,5 5,6 5,7)
 ```
 
@@ -117,7 +117,7 @@ With `--json`, the same information is emitted as one object:
 Prints the chosen move and nothing else, so the output can be fed straight into another command.
 
 ```
-$ oxox-zero best 5,5 6,6 5,6
+$ ox-zero best 5,5 6,6 5,6
 5,7
 ```
 
@@ -128,7 +128,7 @@ With `--json`: `{"move": [5, 7], "score": 0.47}`.
 An interactive board for studying the game. You play moves for both sides, and the engine re-analyses the position after every change, showing the same report as `analyze`. Start from an empty board or from a given position.
 
 ```
-$ oxox-zero sandbox 5,5 6,6
+$ ox-zero sandbox 5,5 6,6
 
 X to move (2 marks on board)
 [board with scores, as in analyze]
