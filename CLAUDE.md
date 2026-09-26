@@ -26,3 +26,7 @@ Managed with [uv](https://docs.astral.sh/uv/). Never `pip install` into the venv
 | `uv run python -m oxox...` | Run package code inside the venv |
 
 Layout: `src/oxox/` is the package, `tests/` mirrors it. Python 3.14 (Torch 2.14 supports it).
+
+## Gotchas
+
+- GPU acceleration on this machine (Apple Silicon) is via PyTorch's `mps` backend, not CUDA. Select the device at runtime (`mps` if available, else `cpu`) rather than hardcoding; MPS lacks float64 and a few ops silently fall back to CPU.

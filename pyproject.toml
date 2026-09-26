@@ -5,7 +5,10 @@ description = "AlphaZero engine and analysis tooling for the OXOX board game"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "numpy>=2.5.3",
+    "torch>=2.14.0",
+]
 
 [build-system]
 requires = ["hatchling"]
