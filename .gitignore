@@ -220,3 +220,17 @@ __marimo__/
 # Project artifacts
 checkpoints/
 data/
+
+# Model weights and experiment tracking (in case they land outside checkpoints/)
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+runs/
+wandb/
+mlruns/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
