@@ -30,7 +30,7 @@ Ownership of the marks does not matter. Whoever places the mark that completes a
 
 > **Not implemented yet.** This section is the design specification for the CLI (roadmap step 2). It is written as if the tool existed so that the implementation has a fixed target.
 
-The command is `ox-zero`. Analysis commands take a position, print a human-readable report by default, and print JSON with `--json`.
+The command is `ox-zero`. `analyze` and `best` take a position, print a human-readable report by default, and print JSON with `--json`. `sandbox` is an interactive screen.
 
 ### Positions and moves
 
@@ -44,20 +44,25 @@ The command is `ox-zero`. Analysis commands take a position, print a human-reada
 
 | Command | Description |
 |---------|-------------|
-| `ox-zero show <position>` | Render a position as a board. No engine involved. |
 | `ox-zero analyze <position>` | Evaluate a position and score every legal move. |
 | `ox-zero best <position>` | Print only the engine's chosen move. |
-| `ox-zero sandbox [<position>]` | Interactive analysis board. See below. |
+| `ox-zero sandbox [<position>]` | Interactive analysis screen. See below. |
 
-Engine flags, accepted by `analyze`, `best`, and `sandbox`:
+Flags. Not every flag makes sense for every command; the last three columns say where each one applies.
 
-| Flag | Description |
-|------|-------------|
-| `--simulations N` | Tree-search playouts per analysis. Strength versus speed. |
-| `--model PATH` | Checkpoint to load. Defaults to the newest in `checkpoints/`. |
-| `--top N` | Number of candidate moves in the top section. Default 3. |
-| `--seed N` | Fix randomness for reproducible output. |
-| `--json` | Machine-readable output instead of text. |
+| Flag | Description | `analyze` | `best` | `sandbox` |
+|------|-------------|:---:|:---:|:---:|
+| `--simulations N` | Tree-search playouts per analysis. Strength versus speed. | ✓ | ✓ | |
+| `--model PATH` | Checkpoint to load. Defaults to the newest in `checkpoints/`. | ✓ | ✓ | ✓ |
+| `--top N` | Number of candidate moves in the top section. Default 3. | ✓ | | ✓ |
+| `--seed N` | Fix randomness for reproducible output. | ✓ | ✓ | ✓ |
+| `--json` | Machine-readable output instead of text. | ✓ | ✓ | |
+
+Why the gaps:
+
+- `--simulations` does not apply to the sandbox because analysis there is open-ended. The engine keeps searching until the position changes or analysis is switched off, so there is no fixed playout budget to set.
+- `--top` does not apply to `best` because `best` prints exactly one move. For a ranked list of candidates, use `analyze --top N`.
+- `--json` does not apply to the sandbox because it is an interactive screen, not a report.
 
 ### `analyze`
 
@@ -89,6 +94,8 @@ Top 3
   2. 4,6   38%
   3. 6,5   36%
 ```
+
+> The numbers in this example are made up to show the layout. They are not the output of any engine, and a trained model will produce different values.
 
 If the position is already decided, the report says so instead of running the engine:
 
@@ -125,27 +132,38 @@ With `--json`: `{"move": [5, 7], "score": 0.47}`.
 
 ### `sandbox`
 
-An interactive board for studying the game. You play moves for both sides, and the engine re-analyses the position after every change, showing the same report as `analyze`. Start from an empty board or from a given position.
+An interactive screen for studying the game, in the spirit of a chess GUI's analysis mode. The sandbox takes over the terminal with a single view that is redrawn in place; there is no scrolling transcript. You play moves for both sides, and the engine analyses the current position continuously in the background, updating the scores on screen as its search deepens. Start from an empty board or from a given position.
+
+The screen shows, top to bottom:
+
+- **Status line.** Side to move, mark count, and the engine state: `analysing` with the number of simulations so far, or `paused`.
+- **Board.** The same board as `analyze`, with a score in every empty cell. While analysis is paused, empty cells show `.` instead of a score.
+- **Eval and top N candidates.** As in `analyze`.
+- **Move history.** The moves played so far, in order.
+- **Message line.** Feedback for the last command: errors, the output of `board`, or nothing.
+- **Prompt.** Where you type commands.
 
 ```
-$ ox-zero sandbox 5,5 6,6
+$ ox-zero sandbox 5,5 6,6 5,6
 
-X to move (2 marks on board)
+O to move (3 marks on board)              analysing: 12400 simulations
+
 [board with scores, as in analyze]
 
-> 5,6
-O to move (3 marks on board)
-[board with scores]
+Eval: 47% for O
 
-> undo
-X to move (2 marks on board)
-[board with scores]
+Top 3
+  1. 5,7   47%
+  2. 4,6   38%
+  3. 6,5   36%
 
-> auto off
-Analysis paused. Type `go` to analyse the current position.
+Moves: 5,5 6,6 5,6
 
-> quit
+
+>
 ```
+
+Whenever the position changes (a move is played or undone, a position is loaded, the board is reset), the engine drops its current search and starts on the new position. The screen redraws at once with the new board, and the scores fill in and settle as the search progresses. If the position is decided, the engine stops and the status line shows the result instead, e.g. `Game over: O wins (X O X at 5,5 5,6 5,7)`.
 
 Commands available inside the sandbox:
 
@@ -153,12 +171,10 @@ Commands available inside the sandbox:
 |-------|--------|
 | `row,col` | Play a move for the side to move. |
 | `undo` / `redo` | Step back through the move history, or forward again. Playing a new move discards the redo history. |
-| `auto on` / `auto off` | Turn continuous analysis on or off. |
-| `go` | Analyse the current position once. Useful when `auto` is off. |
+| `auto on` / `auto off` | Turn continuous analysis on or off. With it off, the board and history still update as you play, but no scores are shown. |
 | `load <position>` | Jump to a position, given as a move list or board string. |
 | `reset` | Clear to an empty board. |
-| `moves` | Print the move history. |
-| `board` | Print the current position as a board string, ready to paste into `analyze`. |
+| `board` | Show the current position as a board string in the message line, ready to paste into `analyze`. |
 | `quit` | Leave the sandbox. |
 
 ## Development
