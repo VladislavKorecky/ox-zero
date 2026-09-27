@@ -2,7 +2,7 @@
 
 An [AlphaZero](https://arxiv.org/abs/1712.01815)-style engine for **OXOX**, a two-player board game derived from Tic-tac-toe, together with tooling for analyzing positions and studying the game.
 
-> **Status:** early development. There is no working engine yet; this repository currently holds the project skeleton.
+> **Status:** early development. There is no working engine yet; this repository currently holds the game rules (roadmap step 1).
 
 ## The game
 
@@ -102,7 +102,7 @@ Top 3
 If the position is already decided, the report says so instead of running the engine:
 
 ```
-$ ox-zero analyze 5,5 6,6 5,6 5,7
+$ ox-zero analyze 5,5 6,6 5,7 5,6
 Game over: O wins (X O X at 5,5 5,6 5,7)
 ```
 
