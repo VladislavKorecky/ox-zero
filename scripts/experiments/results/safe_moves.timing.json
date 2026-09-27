@@ -1,0 +1,28 @@
+{
+  "parameters": {
+    "sizes": [
+      6,
+      8,
+      12
+    ],
+    "games": 500,
+    "seed": 0
+  },
+  "timing": [
+    {
+      "size": 6,
+      "games": 500,
+      "seconds": 10.09
+    },
+    {
+      "size": 8,
+      "games": 500,
+      "seconds": 31.97
+    },
+    {
+      "size": 12,
+      "games": 500,
+      "seconds": 177.86
+    }
+  ]
+}
