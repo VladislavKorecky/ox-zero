@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Draft, under review |
+| Status | Ready for implementation |
 | Branches | Plan: `plan/engine-search-network`. Implementation: `feat/engine-search-network`. |
 | Design references | [search.md](../design/search.md) (every search rule and constant), [network.md](../design/network.md) (encoding, tower, heads, loss, symmetries), [engineering.md](../design/engineering.md) (module layout, evaluator seam, tree representation, testing), [cli-integration.md](../design/cli-integration.md) (what the analysis generator must yield, read but not implemented here) |
 | Depends on | [Plan 01](archive/01-game-experiments.md): `ox_zero.game` including `Solver`. |
