@@ -1,0 +1,26 @@
+[project]
+name = "ox-zero"
+version = "0.1.0"
+description = "AlphaZero engine and analysis tooling for the OXOX board game"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.5.3",
+    "torch>=2.14.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ox_zero"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
