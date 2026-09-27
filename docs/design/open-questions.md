@@ -2,6 +2,8 @@
 
 Decisions that wait on data. The first implementation step, before any engine code, is a set of throwaway experiments on the game itself (scratch scripts, not package code). Their results get recorded here and the affected constants in the other files change from **Open** to **Decided**.
 
+**Status (2026-09-27):** the game experiments have run ([Results](#results-2026-09-27)) and the constants they could settle are settled ([Decisions](#decisions-2026-09-27)). What is still open waits on training runs, not on more game experiments.
+
 ## Experiments to run
 
 | Experiment | Method | What it decides |
@@ -10,21 +12,22 @@ Decisions that wait on data. The first implementation step, before any engine co
 | **First-player advantage and parity** | Random play win rates by side; exact values on small boards | Whether an empty-count/parity input plane or global pooling is needed from the start |
 | **Branching factor over a game** | Average legal moves per move number, per board size | Dirichlet `α = 10 / avg legal moves`, and how to define "average" (over positions in typical games, not over the empty board) |
 | **Exact solutions of 3×3, 4×4, maybe 5×5** | Minimax with memoisation on the immutable `State` | The solver fixture for search tests; also tells us who wins small boards, a sanity check on the rules and on the engine's first results |
+| **Safe moves over a game** (added after the first results) | Greedy play, counting the moves that do not lose on the spot at each move number | Whether the game is decided by running out of safe moves (a counting problem: global pooling, MCTS-Solver), and a better guide to trained-game length than random play |
 
 ## Constants waiting on the experiments
 
-| Constant | File | Current placeholder |
-|---|---|---|
-| Dirichlet `α` per board size | [search.md](search.md) | `10 / avg legal moves` |
-| Temperature cutoff fraction | [search.md](search.md) | 20% of `S²` |
-| Value head type | [network.md](network.md) | Scalar `tanh`; revisit if draws are common |
-| Extra input plane | [network.md](network.md) | None; revisit if parity matters |
-| Tower size per board size | [network.md](network.md) | 4×64 on 6×6, ~6×128 on 12×12 |
-| Learning rate, weight decay | [network.md](network.md) | `1e-3`, `1e-4` |
-| Simulations per self-play move | [search.md](search.md) | Paper: 800; likely far fewer on small boards |
-| Games per generation, training steps per generation, buffer generations `K` | [training.md](training.md) | `K ≈ 10–20`; the rest budget-driven |
-| Tournament protocol (games, opponents, simulations, tie-breaking of deterministic players) | [training.md](training.md) | Undecided |
-| Root-expansion evaluations and the `simulations` count | [cli-integration.md](cli-integration.md) | Not counted |
+| Constant | File | Placeholder before the experiments | Status |
+|---|---|---|---|
+| Dirichlet `α` per board size | [search.md](search.md) | `10 / avg legal moves` | **Decided:** `α = 11 / S²` |
+| Temperature cutoff fraction | [search.md](search.md) | 20% of `S²` | **Decided:** a quarter of the measured mean game length: 2, 3, 4, 7 moves on 4x4, 6x6, 8x8, 12x12 |
+| Value head type | [network.md](network.md) | Scalar `tanh`; revisit if draws are common | **Decided:** scalar; draws are absent from 5x5 up |
+| Extra input plane | [network.md](network.md) | None; revisit if parity matters | **Decided:** none in version 1; parity matters but the plane is the wrong fix |
+| Tower size per board size | [network.md](network.md) | 4×64 on 6×6, ~6×128 on 12×12 | Open; nothing measured bears on it |
+| Learning rate, weight decay | [network.md](network.md) | `1e-3`, `1e-4` | Open; waits on loss curves |
+| Simulations per self-play move | [search.md](search.md) | Paper: 800; likely far fewer on small boards | Open; start at 100–200 on 6x6 |
+| Games per generation, training steps per generation, buffer generations `K` | [training.md](training.md) | `K ≈ 10–20`; the rest budget-driven | Open; examples per game are now known (13, 17, 28 on 6x6, 8x8, 12x12) |
+| Tournament protocol (games, opponents, simulations, tie-breaking of deterministic players) | [training.md](training.md) | Undecided | Open |
+| Root-expansion evaluations and the `simulations` count | [cli-integration.md](cli-integration.md) | Not counted | Open (plan-level) |
 
 ## Questions for the plan, not the design
 
@@ -86,3 +89,49 @@ Negamax with a transposition table (`ox_zero.game.Solver`). The value is for X, 
 - **Parity and first-player advantage.** The second player is favoured. 4x4 is an O win with perfect play. O wins at least half of random games at every size (50.1–54.4%), and more under greedy play on 4x4 to 8x8 (54.4–66.0%). The edge fades on 12x12 (51.9% random, 50.2% greedy). Which side is to move matters, at least on small boards. That bears on the parity or empty-count input plane question.
 - **Examples per game.** At random or greedy strength, one game yields about 27–29 positions on 12x12, about 13 on 6x6, and about 17 on 8x8. That is the starting figure for buffer size in games and for examples per generation, and it will change once trained agents play longer games.
 - **Solver reach.** 3x3 and 4x4 are available as exact ground truth for search tests. 4x4 is the more useful one: a forced win for O, and the first optimal line ends in 8 plies. 5x5 is out of reach for the plain solver on this machine.
+
+### Follow-up: safe moves over a game
+
+Added the same day, after reading the numbers above. Measured with `scripts/experiments/safe_moves.py` (500 greedy games per size, seed 0). A move is *safe* if it does not lose on the spot: after it, the opponent has no move that completes an alternating line. The greedy policy never plays an unsafe move while a safe one exists, so under it every decisive game ends by a **forced loss**, a position where the side to move has no safe move at all.
+
+Move numbers are 0-based, so `S² − k` cells are empty at move `k`. "Forced loss" and "win available" are shares of the decisions at that move number.
+
+| Board | Move | Games alive | Legal | Safe: mean | Forced loss % | Win available % |
+|---|---|---|---|---|---|---|
+| 6x6 | 4 | 500 | 32 | 17.6 | 2.8 | 0.2 |
+| 6x6 | 8 | 434 | 28 | 8.5 | 9.9 | 5.3 |
+| 6x6 | 12 | 283 | 24 | 5.1 | 15.9 | 15.9 |
+| 6x6 | 16 | 122 | 20 | 2.7 | 22.1 | 21.3 |
+| 8x8 | 6 | 497 | 58 | 32.4 | 2.2 | 0.8 |
+| 8x8 | 12 | 394 | 52 | 16.7 | 8.4 | 8.4 |
+| 8x8 | 18 | 184 | 46 | 9.0 | 12.5 | 14.1 |
+| 8x8 | 24 | 56 | 40 | 6.1 | 16.1 | 30.4 |
+| 12x12 | 8 | 500 | 136 | 93.3 | 0.4 | 0.0 |
+| 12x12 | 16 | 461 | 128 | 57.7 | 3.2 | 2.8 |
+| 12x12 | 24 | 308 | 120 | 35.4 | 10.4 | 7.1 |
+| 12x12 | 32 | 129 | 112 | 22.5 | 11.6 | 13.2 |
+
+The full per-move series is in `scripts/experiments/results/safe_moves.json`. The minimum safe count is 0 from move 4 (6x6, 8x8) or 8 (12x12) on: a forced loss can arrive that early.
+
+**Length of optimal play, sampled.** `solve_boards.py` now also plays 500 games per solved size in which both sides pick uniformly among their optimal moves. On 4x4 the mean is 8.4 moves (P10 6, P90 12, max 14), which is 52% of the board and no longer than random play (8.7). Caveat: in a lost position every move is optimal, so the losing side plays randomly rather than stubbornly; the figure is a floor for games between two strong players, not an estimate. 3x3 always runs the full 9 moves to a draw.
+
+**What this adds:**
+
+- **OXOX is an avoidance game.** Under greedy play on 12x12, half the legal moves lose on the spot by move 16 and three quarters by move 28; on 6x6 only about 5 safe moves remain by move 12. Games end when the side to move runs out of safe moves. Tactics are local (a threat spans three cells) but the outcome is global: who has more safe moves left, which is a parity-like count. That is a job for global pooling, not for convolutions, and it is why O wins 4x4 and leads every size under greedy play.
+- **Trained games will not be much longer than random ones.** On 4x4, perfect play uses about the same share of the board as random play. Expect 30 to 50 moves on 12x12, not 144. Examples per game and the temperature cutoff can be set from the random-play lengths and re-tuned from the logged average game length once trained agents exist.
+- **Proof propagation should pay.** With most legal moves losing on the spot mid-game, an MCTS that averages terminal values instead of proving them spends its simulations relearning the same one-ply facts. MCTS-Solver moves to the front of the search upgrades.
+- **The empty 4x4 board is a poor solver fixture.** All 16 first moves lose, so "the search picks a proven-best move" is vacuous there. Fixtures need positions whose optimal moves are a strict, small subset of the legal ones. The empty 3x3 is one: eight moves draw and the centre loses.
+
+## Decisions (2026-09-27)
+
+Recorded in the files they belong to; summarised here so the trail from number to decision is in one place.
+
+| Decision | Data | Where |
+|---|---|---|
+| `α = 11 / S²` (0.31 on 6x6, 0.17 on 8x8, 0.076 on 12x12) | Measured average legal moves are 29.4, 54.7, 128.5, about `0.9 · S²` at every size because games end with most of the board empty; `10 / (0.9 · S²) ≈ 11 / S²` | [search.md](search.md#root-exploration-noise-self-play-only) |
+| Temperature cutoff: a quarter of the measured mean game length, per size | 20% of `S²` is 29 moves on 12x12, longer than a whole game at current strength (28.6), so every move would be sampled and `z` labels would carry sampling noise through the tactical phase. Opening diversity is already large (up to 144 first moves plus root noise). | [search.md](search.md#move-selection-self-play) |
+| Scalar value head stays | Zero draws in 12,500 games from 5x5 up; 4x4 is decisive under perfect play. A line-free full board exists in theory (horizontal stripes two rows wide), but nothing reaches it. | [network.md](network.md#value-head) |
+| No fourth input plane in version 1 | Parity matters (O wins 4x4; safe-move counting decides games), but an empty-count plane counts empties, not safe cells. Both heads already have a fully connected layer that can count. Global pooling is the real fix and is promoted in the upgrades list. | [network.md](network.md#input-encoding), [upgrades.md](upgrades.md#network) |
+| MCTS-Solver is the first search upgrade to test | Safe-move table above | [upgrades.md](upgrades.md#search) |
+| 5x5 is out of scope for the solver fixture; fixtures use positions with a strict subset of optimal moves | 5x5 grew the cache by about 1 GB per minute and did not finish in 10 minutes; the empty 4x4 has no strict subset | [engineering.md](engineering.md#testing) |
+| Start on 6x6 with 100–200 simulations per move and 4×64; 12x12 after the pipeline works | Unchanged from the guiding principles; the data confirms 12x12 random-strength games touch only a fifth of the board, so nothing about 12x12 is learnable before the small boards are | [README.md](README.md#guiding-principles) |

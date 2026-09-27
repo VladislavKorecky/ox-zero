@@ -62,7 +62,7 @@ Each move of each self-play game produces one example, recorded when the game en
 
 ### Replay buffer
 
-**Decided:** the buffer holds every position from the most recent `K` generations and samples uniformly from them. This is the paper's "most recent 500,000 games" at our scale. Old generations expire by generation number, not by count. `K` starts around 10 to 20. **Open:** tune `K`, games per generation, and training steps per generation together, since they set how many times each position is seen.
+**Decided:** the buffer holds every position from the most recent `K` generations and samples uniformly from them. This is the paper's "most recent 500,000 games" at our scale. Old generations expire by generation number, not by count. `K` starts around 10 to 20. **Open:** tune `K`, games per generation, and training steps per generation together, since they set how many times each position is seen. The game experiments give the multiplier: about 13 examples per game on 6x6, 17 on 8x8 and 28 on 12x12 at random strength, and trained games are not expected to be much longer ([open-questions.md](open-questions.md#follow-up-safe-moves-over-a-game)).
 
 ### Augmentation
 

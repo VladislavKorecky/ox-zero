@@ -19,7 +19,7 @@ OXOX has two properties that simplify the encoding compared to chess or Go.
 
 The encoding is a pure function `State -> tensor[3, S, S]` and lives on the network side of the evaluator seam ([engineering.md](engineering.md#the-evaluator-seam)).
 
-**Open:** whether a fourth plane (fraction of empty cells, broadcast) helps. Tempo and parity may matter in OXOX and convolutions cannot count; the experiments decide ([open-questions.md](open-questions.md)). Deferred to [upgrades.md](upgrades.md#network) either way.
+**Decided:** no fourth plane in version 1. The game experiments settled that tempo and parity *do* matter (O wins 4x4 with perfect play, and games are decided by who runs out of safe moves first, a count; see [open-questions.md](open-questions.md#follow-up-safe-moves-over-a-game)), but a broadcast empty-count plane counts empties, not safe cells, so it hands the network the wrong number. Both heads already end in fully connected layers over the whole board, which can count what the trunk cannot. If the value head plateaus, the fix to try is global pooling in the trunk, promoted in [upgrades.md](upgrades.md#network).
 
 ## Body: the residual tower
 
@@ -70,7 +70,7 @@ One logit per cell. Illegal cells (occupied, or all cells when the game is over)
 conv 1×1 (F→1) → BN → ReLU → flatten (S²) → linear → 256 → ReLU → linear → 1 → tanh
 ```
 
-**Decided:** a single scalar `v ∈ [-1, 1]`, from the perspective of the side to move: `+1` certain win, `0` draw, `-1` certain loss. The CLI displays `(v + 1) / 2`. Deferred: [win/draw/loss head](upgrades.md#network), to be revisited if the draw rate turns out high.
+**Decided:** a single scalar `v ∈ [-1, 1]`, from the perspective of the side to move: `+1` certain win, `0` draw, `-1` certain loss. The CLI displays `(v + 1) / 2`. Confirmed by the game experiments: no draw in 12,500 games from 5x5 up, and 4x4 is decisive under perfect play ([open-questions.md](open-questions.md#results-2026-09-27)). Deferred: [win/draw/loss head](upgrades.md#network), to be revisited only if trained agents on large boards start drawing.
 
 ## Loss
 
