@@ -1,0 +1,22 @@
+{
+  "parameters": {
+    "sizes": [
+      3,
+      4
+    ]
+  },
+  "timing": [
+    {
+      "size": 3,
+      "solve_seconds": 0.026,
+      "best_moves_and_line_seconds": 0.0,
+      "positions_solved_total": 3784
+    },
+    {
+      "size": 4,
+      "solve_seconds": 0.533,
+      "best_moves_and_line_seconds": 1.724,
+      "positions_solved_total": 261555
+    }
+  ]
+}
