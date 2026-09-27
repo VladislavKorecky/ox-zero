@@ -145,16 +145,16 @@ def apply_move(state: State, move: Cell) -> State:
             cell is already occupied.
     """
     if is_terminal(state):
-        raise IllegalMoveError(f"cannot play {_fmt(move)}: the game is over")
+        raise IllegalMoveError(f"cannot play {format_cell(move)}: the game is over")
 
     row, col = move
     size = state.size
     if not (0 <= row < size and 0 <= col < size):
-        raise IllegalMoveError(f"cannot play {_fmt(move)}: off the {size}x{size} board")
+        raise IllegalMoveError(f"cannot play {format_cell(move)}: off the {size}x{size} board")
 
     index = row * size + col
     if state.board[index] is not None:
-        raise IllegalMoveError(f"cannot play {_fmt(move)}: cell is occupied")
+        raise IllegalMoveError(f"cannot play {format_cell(move)}: cell is occupied")
 
     mark = state.to_move
     # Tuples are immutable, so "placing" a mark means building a new tuple:
@@ -223,6 +223,6 @@ def _completed_lines(board: tuple[Mark | None, ...], size: int, cell: Cell) -> t
     return tuple(found)
 
 
-def _fmt(cell: Cell) -> str:
+def format_cell(cell: Cell) -> str:
     """`(5, 7)` -> `"5,7"`, the notation used by the CLI."""
     return f"{cell[0]},{cell[1]}"
