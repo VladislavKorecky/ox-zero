@@ -52,7 +52,8 @@ Flags. Not every flag makes sense for every command; the last three columns say 
 
 | Flag | Description | `analyze` | `best` | `sandbox` |
 |------|-------------|:---:|:---:|:---:|
-| `--simulations N` | Tree-search playouts per analysis. Strength versus speed. | ✓ | ✓ | |
+| `--simulations N` | Tree-search playouts per analysis. Strength versus speed. With `--live`, an optional cap. | ✓ | ✓ | |
+| `--live` | Keep analysing and stream reports until interrupted. See [Live analysis](#live-analysis). | ✓ | | |
 | `--model PATH` | Checkpoint to load. Defaults to the newest in `checkpoints/`. | ✓ | ✓ | ✓ |
 | `--top N` | Number of candidate moves in the top section. Default 3. | ✓ | | ✓ |
 | `--seed N` | Fix randomness for reproducible output. | ✓ | ✓ | ✓ |
@@ -60,7 +61,8 @@ Flags. Not every flag makes sense for every command; the last three columns say 
 
 Why the gaps:
 
-- `--simulations` does not apply to the sandbox because analysis there is open-ended. The engine keeps searching until the position changes or analysis is switched off, so there is no fixed playout budget to set.
+- `--simulations` does not apply to the sandbox because analysis there is open-ended. The engine keeps searching until the position changes or analysis is paused, so there is no fixed playout budget to set.
+- `--live` does not apply to `best`, which exists to print one move and exit, nor to the sandbox, which is always live.
 - `--top` does not apply to `best` because `best` prints exactly one move. For a ranked list of candidates, use `analyze --top N`.
 - `--json` does not apply to the sandbox because it is an interactive screen, not a report.
 
@@ -119,6 +121,21 @@ With `--json`, the same information is emitted as one object:
 
 `moves` lists every legal move in board order (left to right, top to bottom). `result` is `null` for a live position, otherwise `"X"`, `"O"`, or `"draw"`.
 
+#### Live analysis
+
+Without `--live`, `analyze` runs `--simulations` playouts, prints one report, and exits. With `--live`, the engine keeps searching and the report is refreshed as the search deepens, roughly twice a second. It runs until you press Ctrl-C, or until the `--simulations` cap is reached if one is given.
+
+In text mode the report is redrawn in place, so the terminal shows one board whose numbers settle over time. It is the sandbox screen without the prompt.
+
+With `--json`, the output is [JSON Lines](https://jsonlines.org/): every refresh writes one complete report object on its own line, in the same shape as above plus a `simulations` count. A consumer reads the stream line by line and keeps the most recent object; there is nothing to reassemble. When the cap is reached, the last line is the final report and the process exits with status 0. On Ctrl-C the stream simply ends.
+
+```
+$ ox-zero analyze 5,5 6,6 5,6 --live --json
+{"simulations": 400, "board": "____...X..._", "to_move": "O", "value": 0.51, "moves": [...], "top": [...], "result": null}
+{"simulations": 1200, "board": "____...X..._", "to_move": "O", "value": 0.48, "moves": [...], "top": [...], "result": null}
+{"simulations": 2000, "board": "____...X..._", "to_move": "O", "value": 0.47, "moves": [...], "top": [...], "result": null}
+```
+
 ### `best`
 
 Prints the chosen move and nothing else, so the output can be fed straight into another command.
@@ -140,7 +157,7 @@ The screen shows, top to bottom:
 - **Board.** The same board as `analyze`, with a score in every empty cell. While analysis is paused, empty cells show `.` instead of a score.
 - **Eval and top N candidates.** As in `analyze`.
 - **Move history.** The moves played so far, in order.
-- **Message line.** Feedback for the last command: errors, the output of `board`, or nothing.
+- **Message line.** Feedback for the last command: errors, the output of `export`, or nothing.
 - **Prompt.** Where you type commands.
 
 ```
@@ -171,10 +188,10 @@ Commands available inside the sandbox:
 |-------|--------|
 | `row,col` | Play a move for the side to move. |
 | `undo` / `redo` | Step back through the move history, or forward again. Playing a new move discards the redo history. |
-| `auto on` / `auto off` | Turn continuous analysis on or off. With it off, the board and history still update as you play, but no scores are shown. |
+| `pause` / `resume` | Pause or resume continuous analysis. While paused, the board and history still update as you play, but no scores are shown. |
 | `load <position>` | Jump to a position, given as a move list or board string. |
 | `reset` | Clear to an empty board. |
-| `board` | Show the current position as a board string in the message line, ready to paste into `analyze`. |
+| `export` | Show the current position as a board string in the message line, ready to paste into `analyze`. |
 | `quit` | Leave the sandbox. |
 
 ## Development
