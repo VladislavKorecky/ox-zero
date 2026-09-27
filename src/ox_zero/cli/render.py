@@ -24,15 +24,18 @@ from ox_zero.game import Cell, Mark, State, format_cell, is_draw
 CELL_WIDTH = 4
 EVAL_BAR_WIDTH = 25
 
+# Explicit RGB rather than named ANSI colours: named colours are remapped by
+# every terminal theme (bright cyan can come out a muddy teal), while RGB is
+# stable and Rich downgrades it to the nearest 256/16 colour when needed.
 MARK_STYLES = {
-    Mark.X: Style(color="bright_cyan", bold=True),
-    Mark.O: Style(color="bright_magenta", bold=True),
+    Mark.X: Style(color="#4fc3f7", bold=True),  # sky blue
+    Mark.O: Style(color="#ff6b9a", bold=True),  # pink
 }
 _LABEL = Style(dim=True)
 _EMPTY_DOT = Style(dim=True)
 _SCORE_TEXT = Style(color="grey93")
 _TOP_TEXT = Style(color="bright_white", bold=True)
-_WINNING_CELL = Style(bgcolor="gold1")
+_WINNING_CELL = Style(color="black", bgcolor="#ffd54f", bold=True)
 
 # Heatmap colour stops: (score, RGB). Deliberately dark tints, so light text
 # stays readable on top and the board doesn't glare. Scores in between are
@@ -43,14 +46,26 @@ _HEAT_STOPS = (
     (1.0, (28, 120, 62)),   # green: good for the side to move
 )
 
+# Brighter versions of the same stops, for text and bars drawn on the
+# terminal's own (usually dark) background, where the dark tints would vanish.
+_HEAT_STOPS_BRIGHT = (
+    (0.0, (239, 96, 96)),
+    (0.5, (236, 190, 64)),
+    (1.0, (96, 214, 128)),
+)
+
 # Partial blocks in eighths, for a smooth eval bar: index k is k/8 of a cell.
 _EIGHTHS = " ▏▎▍▌▋▊▉"
 
 
-def heat_color(score: float) -> Color:
-    """The heatmap colour for a win probability in [0, 1]."""
+def heat_color(score: float, *, bright: bool = False) -> Color:
+    """The heatmap colour for a win probability in [0, 1].
+
+    `bright=True` gives the foreground variant, for text and bars.
+    """
     score = min(1.0, max(0.0, score))
-    for (lo, lo_rgb), (hi, hi_rgb) in zip(_HEAT_STOPS, _HEAT_STOPS[1:]):
+    stops = _HEAT_STOPS_BRIGHT if bright else _HEAT_STOPS
+    for (lo, lo_rgb), (hi, hi_rgb) in zip(stops, stops[1:]):
         if score <= hi:
             t = (score - lo) / (hi - lo)
             r, g, b = (round(a + (b - a) * t) for a, b in zip(lo_rgb, hi_rgb))
@@ -91,22 +106,26 @@ def board(
         text.append(f"{row:>3} ", _LABEL)
         for col in range(state.size):
             cell = (row, col)
+            # Each cell is drawn as padding + content. `background` covers the
+            # whole cell (so heatmap blocks touch), while `style` applies to
+            # the content only, so an underline marks just the glyph.
             mark = state[cell]
+            background = Style()
             if mark is not None:
                 content, style = mark.value, MARK_STYLES[mark]
                 if cell in winning:
-                    style += _WINNING_CELL
+                    background = style = _WINNING_CELL
             elif analysis is not None and cell in analysis.scores:
                 score = analysis.scores[cell]
                 content = str(percent(score))
-                style = (_TOP_TEXT if cell in top else _SCORE_TEXT) + Style(
-                    bgcolor=heat_color(score)
-                )
+                background = Style(bgcolor=heat_color(score))
+                style = background + (_TOP_TEXT if cell in top else _SCORE_TEXT)
             else:
                 content, style = ".", _EMPTY_DOT
             if cell == last_move:
                 style += Style(underline=True)
-            text.append(f"{content:>{CELL_WIDTH}}", style)
+            text.append(" " * (CELL_WIDTH - len(content)), background)
+            text.append(content, style)
     return text
 
 
@@ -123,7 +142,7 @@ def eval_bar(value: float, side: Mark) -> Text:
     empty = "░" * (EVAL_BAR_WIDTH - len(filled))
 
     text = Text("Eval ", style="bold")
-    text.append(filled, Style(color=heat_color(value)))
+    text.append(filled, Style(color=heat_color(value, bright=True)))
     text.append(empty, _LABEL)
     text.append(f" {percent(value)}%", Style(bold=True))
     text.append(" for ")
@@ -140,7 +159,7 @@ def top_list(analysis: Analysis, n: int) -> Text:
         text.append(f"\n  {rank:>{rank_width}}. ")
         # 5 characters fit the widest cell on a 12x12 board, `10,11`.
         text.append(f"{format_cell(cell):<5}", Style(bold=rank == 1))
-        text.append(f" {percent(score):>2}%", Style(color=heat_color(score), bold=True))
+        text.append(f" {percent(score):>2}%", Style(color=heat_color(score, bright=True), bold=True))
     return text
 
 
