@@ -22,6 +22,7 @@ from ox_zero.game.rules import (
     legal_moves,
     play,
 )
+from ox_zero.game.solver import Solver
 
 __all__ = [
     "BOARD_SIZE",
@@ -30,6 +31,7 @@ __all__ = [
     "Line",
     "Mark",
     "PositionError",
+    "Solver",
     "State",
     "apply_move",
     "format_cell",
