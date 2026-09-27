@@ -5,6 +5,8 @@ Positions are mostly built with `play(moves)`, which replays a move list from
 the empty board: X moves first, then the sides alternate.
 """
 
+import random
+
 import pytest
 
 from ox_zero.game import (
@@ -303,3 +305,36 @@ def test_mark_str_is_its_letter():
 
 def test_state_type_is_exported():
     assert isinstance(initial_state(), State)
+
+
+# --- Cross-check against a brute-force reference -----------------------------
+
+
+def _reference_lines(state: State) -> set:
+    """Every alternating line on the whole board, found by scanning every cell."""
+    size = state.size
+    found = set()
+    for row in range(size):
+        for col in range(size):
+            for d_row, d_col in [(0, 1), (1, 0), (1, 1), (1, -1)]:
+                line = tuple((row + k * d_row, col + k * d_col) for k in range(3))
+                if all(0 <= r < size and 0 <= c < size for r, c in line):
+                    a, b, c = (state[cell] for cell in line)
+                    if a is not None and b is not None and a == c != b:
+                        found.add(line)
+    return found
+
+
+@pytest.mark.parametrize("size", [3, 4, 6, 12])
+def test_random_games_agree_with_brute_force_scan(size):
+    # Play random games. After every move, the incremental win check (only
+    # lines through the new cell) must agree with a full-board scan: the game
+    # continues while the board has no alternating line, and ends exactly
+    # when the first ones appear.
+    rng = random.Random(size)
+    for _ in range(100):
+        state = initial_state(size)
+        while not is_terminal(state):
+            state = apply_move(state, rng.choice(legal_moves(state)))
+            assert set(state.winning_lines) == _reference_lines(state)
+            assert (state.winner is not None) == bool(state.winning_lines)
