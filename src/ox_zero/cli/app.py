@@ -34,6 +34,8 @@ from rich.text import Text
 
 from ox_zero.cli import render
 from ox_zero.cli.report import best_json, finished_best_json, report_json
+from ox_zero.cli.sandbox.app import run_sandbox
+from ox_zero.cli.sandbox.session import Session
 from ox_zero.engine import Analysis, DummyEngine, Engine, load_engine
 from ox_zero.game import Cell, PositionError, State, is_terminal, parse_cell, parse_position
 
@@ -164,6 +166,24 @@ def best(
         # Plain `print`, not Rich: this output is meant for other programs.
         row, col = analysis.best[0]
         print(f"{row},{col}")
+
+
+@app.command()
+def sandbox(
+    position: PositionArg = None,
+    model: ModelOpt = None,
+    top: TopOpt = 3,
+    seed: SeedOpt = None,
+) -> None:
+    """Interactive analysis screen: play moves, watch the engine think."""
+    _, err = _consoles()
+    tokens = position or []
+    try:
+        session = Session.from_tokens(tokens)
+    except PositionError as error:
+        _fail(err, str(error), tokens, error.token_index)
+    engine = _load(model, seed, err)
+    run_sandbox(session, engine, top)
 
 
 # --- Helpers -----------------------------------------------------------------

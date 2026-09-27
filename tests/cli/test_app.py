@@ -184,3 +184,42 @@ def test_best_json_on_a_finished_game():
 def test_best_rejects_flags_that_do_not_apply(flag):
     args = [flag] if flag == "--live" else [flag, "3"]
     assert run("best", *POSITION, *args).exit_code == 2
+
+
+# --- sandbox -----------------------------------------------------------------
+
+
+@pytest.fixture
+def launched(monkeypatch):
+    """Capture what `sandbox` would launch instead of taking over the terminal."""
+    calls = []
+    monkeypatch.setattr(
+        app_module, "run_sandbox", lambda session, engine, top_n: calls.append((session, top_n))
+    )
+    return calls
+
+
+def test_sandbox_launches_with_the_position(launched):
+    result = run("sandbox", *POSITION, "--top", "5")
+    assert result.exit_code == 0, result.output
+    session, top_n = launched[0]
+    assert session.history == [(5, 5), (6, 6), (5, 6)]
+    assert top_n == 5
+
+
+def test_sandbox_without_a_position_starts_empty(launched):
+    run("sandbox")
+    assert launched[0][0].history == []
+
+
+def test_sandbox_rejects_an_invalid_position(launched):
+    result = run("sandbox", "5,5", "5,5")
+    assert result.exit_code == 2
+    assert "^^^" in result.stderr
+    assert launched == []
+
+
+@pytest.mark.parametrize("flag", ["--json", "--live", "--simulations"])
+def test_sandbox_rejects_flags_that_do_not_apply(launched, flag):
+    args = [flag, "5"] if flag == "--simulations" else [flag]
+    assert run("sandbox", *args).exit_code == 2
