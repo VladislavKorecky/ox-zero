@@ -13,7 +13,7 @@ Columns: what the change is, what it is expected to buy, where the idea comes fr
 | **Parent-`Q` for unvisited children** | Same aim as FPU, one fewer knob. | Common variant | Alongside the FPU test |
 | **Evaluation cache** keyed by `State` | Repeated positions cost no forward pass. Search maths untouched. | Common | When profiling shows duplicate evaluations |
 | **Transposition DAG**: share nodes across move orders | Fewer evaluations and deeper effective search. Visit-count semantics get subtle. | Various engines | After the cache, if it is not enough |
-| **MCTS-Solver**: propagate proven wins and losses | Exact tactics: a forced win is never averaged away. OXOX is almost purely tactical, so this could be large. | Winands et al., 2008 | Early candidate |
+| **MCTS-Solver**: propagate proven wins and losses | Exact tactics: a forced win is never averaged away. OXOX is almost purely tactical, so this could be large. | Winands et al., 2008 | **First search upgrade to test.** The game experiments show that by mid-game most legal moves lose on the spot and games end by forced loss ([open-questions.md](open-questions.md#follow-up-safe-moves-over-a-game)); averaging relearns those one-ply facts every search. |
 | **Virtual loss** / batched leaves in one tree | Much faster analysis in the CLI (paper used 8 leaves per batch). | AlphaGo Zero / AlphaZero | When analysis speed matters, i.e. once a good model exists |
 | **Randomised-symmetry inference**: evaluate leaves under a random board symmetry | Acts as a regulariser and averages out orientation bias. | AlphaGo Zero 2017 | Cheap to test once symmetries exist for augmentation |
 
@@ -22,8 +22,8 @@ Columns: what the change is, what it is expected to buy, where the idea comes fr
 | Upgrade | Expected benefit | Source | When |
 |---|---|---|---|
 | **5×5 stem**, 3×3 blocks after | Layer one sees a full 4-cell line directly. Cheap on a 12×12 board. | Design discussion | A quick ablation once training runs |
-| **Global pooling** in the trunk | Whole-board facts (tempo, parity, who is ahead) reach every cell. Convolutions alone cannot count. | KataGo (Wu, 2019) | If the game experiments show parity matters, or if the value head plateaus |
-| **Empty-count / parity input plane** | Cheaper way to hand the network the same global fact. | Design discussion | Same trigger as global pooling; try this first |
+| **Global pooling** in the trunk | Whole-board facts (tempo, parity, who is ahead) reach every cell. Convolutions alone cannot count. | KataGo (Wu, 2019) | **First network upgrade to test.** The game experiments showed parity matters: O wins 4x4, and games are decided by who runs out of safe moves first, a whole-board count ([open-questions.md](open-questions.md#follow-up-safe-moves-over-a-game)). Try it when the value loss plateaus. |
+| **Empty-count / parity input plane** | Cheaper way to hand the network a global fact. | Design discussion | Low priority: it counts empty cells, but the quantity that decides games is the number of *safe* cells, which the plane does not know. Expect less than pooling. |
 | **Win/draw/loss value head** (3-way softmax) | Separates "drawish" from "unclear". Better calibrated when draws are common. | Leela Chess Zero, KataGo | If the measured draw rate is high |
 | **SGD with momentum + stepped learning rate** | The paper's optimiser; sometimes generalises better. | AlphaZero 2018 | When we want to compare against a faithful run |
 | **Bigger towers** | Strength, at compute cost. | Paper | For the final 12×12 run on a rented GPU |

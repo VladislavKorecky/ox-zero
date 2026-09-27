@@ -75,7 +75,7 @@ P'(s,a) = (1 - ε) · P(s,a) + ε · η_a,     η ~ Dir(α)
 
 with `ε = 0.25` and `α` scaled to the branching factor. The paper's values are 0.03 for Go (361 cells) and 0.3 for chess (about 35 legal moves), which both follow the rule of thumb `α ≈ 10 / (average number of legal moves)`.
 
-**Decided:** `α = 10 / (average legal moves)`, computed per board size. **Open:** the averages come from the game experiments ([open-questions.md](open-questions.md)); rough expectations are `α ≈ 0.07` on 12x12 and `α ≈ 0.3` on 6x6.
+**Decided:** `α = 11 / S²`. The game experiments ([open-questions.md](open-questions.md#results-2026-09-27)) measured the average number of legal moves per decision at 29.4 on 6x6, 54.7 on 8x8 and 128.5 on 12x12, which is about `0.9 · S²` at every size because games end with most of the board still empty. So `10 / (average legal moves) ≈ 10 / (0.9 · S²) ≈ 11 / S²`, and the closed form replaces a per-size table: `α ≈ 0.31` on 6x6, `0.17` on 8x8, `0.076` on 12x12, within 10% of the measured values and in line with the paper's 0.03 for Go and 0.3 for chess.
 
 Noise is applied to the root only, and never in analysis.
 
@@ -92,7 +92,7 @@ After `n` simulations the root's visit counts define the policy target and the m
 
 The stored policy target is always the `τ = 1` distribution, regardless of how the move was chosen.
 
-**Decided:** the cutoff is a fraction of the board area rather than the paper's fixed 30 moves (a Go-sized number that would cover most of a 6x6 game). Initial fraction: 20% of cells, so about 30 moves on 12x12 and 7 on 6x6. **Open:** tune after the game-length experiment.
+**Decided:** the cutoff is a per-size constant in `SearchConfig`, set to **a quarter of the measured mean game length**: 2 moves on 4x4, 3 on 6x6, 4 on 8x8, 7 on 12x12. Neither the paper's fixed 30 nor the earlier placeholder of 20% of cells survives the data: games are short compared with the board (28.6 moves on 12x12 at random strength, [open-questions.md](open-questions.md#results-2026-09-27)), so 20% of cells would sample every move of every game, and sampled blunders in the tactical phase would feed noise into the `z` labels. Opening diversity does not need the help: there are up to 144 first moves and root noise on top. These values are provisional: the lengths behind them are random-play lengths, and games between players who build walls are expected to be longer ([open-questions.md](open-questions.md#follow-up-safe-moves-over-a-game)). Re-derive them from the logged average game length once trained agents exist.
 
 The **best move** of a search, in every mode, is the most visited child. Not the highest `Q`: a child visited three times can have a wildly wrong `Q`, and the visit count already integrates both `Q` and the network's confidence.
 
@@ -121,7 +121,7 @@ Root expansion in analysis adds exactly one visit to every root child. It is a f
 | `c_base` | 19652 | AlphaZero 2018 pseudocode |
 | `c_init` | 1.25 | AlphaZero 2018 pseudocode |
 | `ε` (noise weight) | 0.25 | AlphaZero 2018 |
-| `α` (Dirichlet) | `10 / avg legal moves`, per board size | Rule of thumb consistent with the paper's Go/chess/shogi values. **Open** |
-| Temperature cutoff | 20% of `S²` moves | Board-relative analogue of the paper's 30. **Open** |
-| Simulations per move, self-play | **Open**; the paper used 800 | Budget-dependent |
+| `α` (Dirichlet) | `11 / S²` | `10 / avg legal moves` with the measured averages ([open-questions.md](open-questions.md#decisions-2026-09-27)) |
+| Temperature cutoff | 2, 3, 4, 7 moves on 4x4, 6x6, 8x8, 12x12 | A quarter of the measured mean game length ([open-questions.md](open-questions.md#decisions-2026-09-27)) |
+| Simulations per move, self-play | **Open**; the paper used 800. Start at 100–200 on 6x6 | Budget-dependent |
 | Simulations, CLI default | 800 | Fixed by `docs/cli.md` |

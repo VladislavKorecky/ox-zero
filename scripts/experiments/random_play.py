@@ -75,8 +75,13 @@ def random_policy(state: State, rng: random.Random) -> Cell:
     return rng.choice(legal_moves(state))
 
 
-def greedy_policy(state: State, rng: random.Random) -> Cell:
-    """One-ply lookahead: take a win, else avoid giving one away, else random.
+def classify_moves(state: State) -> tuple[list[Cell], list[Cell]]:
+    """Split the legal moves into (winning moves, safe moves), each in board order.
+
+    A move is *winning* if it completes an alternating line. It is *safe* if it
+    does not lose on the spot: after it, the opponent has no winning move.
+    When a winning move exists the safe list is not computed (it is empty),
+    because the greedy policy takes the win and nobody needs it.
 
     How the "gives the opponent a win" check stays cheap: a cell is an
     immediate win for the opponent if placing their mark there completes an
@@ -93,7 +98,7 @@ def greedy_policy(state: State, rng: random.Random) -> Cell:
 
     wins = [move for move in moves if children[move].winner is not None]
     if wins:
-        return rng.choice(wins)
+        return wins, []
 
     # The opponent's winning cells on the current board, found by pretending
     # it is their turn. `dataclasses.replace` only flips `to_move`; the state
@@ -109,9 +114,16 @@ def greedy_policy(state: State, rng: random.Random) -> Cell:
         if any(_apply(child, cell).winner is not None for cell in _nearby_empty(child, move)):
             continue  # this move creates a new threat
         safe.append(move)
+    return [], safe
 
+
+def greedy_policy(state: State, rng: random.Random) -> Cell:
+    """One-ply lookahead: take a win, else avoid giving one away, else random."""
+    wins, safe = classify_moves(state)
+    if wins:
+        return rng.choice(wins)
     # If every move loses immediately, any of them will do.
-    return rng.choice(safe or moves)
+    return rng.choice(safe or legal_moves(state))
 
 
 def _nearby_empty(state: State, cell: Cell) -> list[Cell]:
