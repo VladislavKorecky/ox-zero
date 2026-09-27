@@ -320,3 +320,67 @@ class SearchTree:
             self.root, self.rng, self.config.dirichlet_epsilon, self.config.alpha(size)
         )
 
+
+@dataclass(frozen=True)
+class Snapshot:
+    """What an analysis reports after each simulation.
+
+    Attributes:
+        value: The root value in `[-1, 1]` for the side to move (`root_value`).
+        q: `Q(root, a)` for every legal move, in board order.
+        visits: `N(root, a)` for every legal move, in board order.
+        best: The most visited move.
+        simulations: Completed simulations, not counting root setup.
+    """
+
+    value: float
+    q: Mapping[Cell, float]
+    visits: Mapping[Cell, int]
+    best: Cell
+    simulations: int
+
+
+def analyse(
+    state: State,
+    evaluator: Evaluator,
+    config: SearchConfig = ANALYSIS,
+    max_simulations: int | None = None,
+) -> Iterator[Snapshot]:
+    """Analyse a position, yielding a snapshot after setup and after every simulation.
+
+    The first snapshot comes after the root setup, with `simulations = 0`;
+    with the default `ANALYSIS` config every legal move already has one
+    visit and a `Q` there. Then one snapshot per simulation, until
+    `max_simulations` (forever when `None`). Cancelling is just dropping the
+    iterator: the tree is plain Python objects, nothing needs closing.
+
+    Raises:
+        ValueError: The game is over. Raised on the call itself, before the
+            first `next()`, like the CLI's `PlaceholderEngine`.
+    """
+    # Build the tree here, outside the generator, so a finished game raises
+    # immediately instead of on the first `next()`: generator bodies do not
+    # run until iterated.
+    tree = SearchTree(state, config)
+    return _analysis_snapshots(tree, evaluator, max_simulations)
+
+
+def _analysis_snapshots(
+    tree: SearchTree, evaluator: Evaluator, max_simulations: int | None
+) -> Iterator[Snapshot]:
+    tree.simulate(evaluator, 0)  # root setup
+    yield _snapshot(tree)
+    while max_simulations is None or tree.simulations < max_simulations:
+        tree.simulate(evaluator, 1)
+        yield _snapshot(tree)
+
+
+def _snapshot(tree: SearchTree) -> Snapshot:
+    children = tree.root.children
+    return Snapshot(
+        value=root_value(tree.root),
+        q={move: child.q for move, child in children.items()},
+        visits={move: child.visit_count for move, child in children.items()},
+        best=most_visited(tree.root),
+        simulations=tree.simulations,
+    )
