@@ -2,7 +2,7 @@
 
 An [AlphaZero](https://arxiv.org/abs/1712.01815)-style engine for **OXOX**, a two-player board game derived from Tic-tac-toe, together with tooling for analyzing positions and studying the game.
 
-> **Status:** early development. There is no working engine yet; this repository currently holds the game rules (roadmap step 1).
+> **Status:** early development. The game rules (roadmap step 1) and the CLI (step 2) are done. The CLI runs on a placeholder engine with meaningless scores until the real one (step 3) exists.
 
 ## The game
 
@@ -28,7 +28,7 @@ Ownership of the marks does not matter. Whoever places the mark that completes a
 
 ## Usage
 
-> **Not implemented yet.** This section is the design specification for the CLI (roadmap step 2). It is written as if the tool existed so that the implementation has a fixed target.
+> The CLI is implemented, but the engine behind it is a **placeholder** until roadmap step 3: every command works, and the scores it prints are meaningless. The CLI says so on stderr each time it starts the engine.
 
 The command is `ox-zero`. `analyze` and `best` take a position, print a human-readable report by default, and print JSON with `--json`. `sandbox` is an interactive screen.
 
@@ -179,33 +179,34 @@ If the position is already decided there is no move to print. `best` then writes
 
 An interactive screen for studying the game, in the spirit of a chess GUI's analysis mode. The sandbox takes over the terminal with a single view that is redrawn in place; there is no scrolling transcript. You play moves for both sides, and the engine analyses the current position continuously in the background, updating the scores on screen as its search deepens. Start from an empty board or from a given position.
 
-The screen shows, top to bottom:
+The screen shows:
 
-- **Status line.** Side to move, mark count, and the engine state: `analysing` with the number of simulations so far, or `paused`.
-- **Board.** The same board as `analyze`, with a score in every empty cell. While analysis is paused, empty cells show `.` instead of a score.
-- **Eval and top N candidates.** As in `analyze`.
-- **Move history.** The moves played so far, in order, numbered in X-and-O pairs as in chess notation.
-- **Message line.** Feedback for the last command: errors, the output of `export`, or nothing.
-- **Prompt.** Where you type commands.
+- **Status line** (top). Side to move, mark count, and the engine state: `analysing` with the number of simulations so far, or `paused`.
+- **Board** (left). The same heatmap board as `analyze`, with a score in every empty cell. While analysis is paused, empty cells show `.` instead of a score.
+- **Side panel** (right of the board). Eval bar and top N candidates as in `analyze`, then the move history: the moves played so far, numbered in X-and-O pairs as in chess notation.
+- **Message line** (below the board). Feedback for the last command: errors, the output of `export`, or nothing.
+- **Prompt** (bottom). Where you type commands, above a footer listing the keyboard shortcuts.
 
 ```
 $ ox-zero sandbox 5,5 6,6 5,6
 
-O to move (3 marks on board)              analysing: 12400 simulations
+O to move (3 marks on board)      analysing: 12,400 simulations
 
-[board with scores, as in analyze]
+       0   1   2   3   4 …  11         Eval ███████████▊░░░░░░░░░░░░░ 47% for O
+  0   12  10   9   8   8 …  12
+  …                                    Top 3
+  5    8   7   6   5  15   X   X  47     1. 5,7   47%
+  6    8   7   6   5  16  36   O  29     2. 4,6   38%
+  …                                      3. 6,5   36%
 
-Eval ███████████▊░░░░░░░░░░░░░ 47% for O
+                                       Moves: 1. 5,5 6,6  2. 5,6
 
-Top 3
-  1. 5,7   47%
-  2. 4,6   38%
-  3. 6,5   36%
+unknown command 'hello' (type help for the list)
 
-Moves: 1. 5,5 6,6  2. 5,6
-
-
->
+┌──────────────────────────────────────────────────────────────┐
+│ row,col to play  ·  help for commands                        │
+└──────────────────────────────────────────────────────────────┘
+ ^q Quit  ^z Undo  ^y Redo  ^p Pause/resume
 ```
 
 Whenever the position changes (a move is played or undone, a position is loaded, the board is reset), the engine drops its current search and starts on the new position. The screen redraws at once with the new board, and the scores fill in and settle as the search progresses. If the position is decided, the engine stops and the status line shows the result instead, e.g. `Game over: O wins (X O X at 5,5 5,6 5,7)`.
