@@ -14,8 +14,10 @@ Why it matters for the design (docs/design/open-questions.md):
   counting (parity) problem, which convolutions cannot do on their own, and
   it argues for global pooling in the network (docs/design/upgrades.md).
 - Games under any non-blundering policy end when the side to move has zero
-  safe moves. The move number at which that happens is a better guide to the
-  length of trained-agent games than random play is.
+  safe moves. The move number at which that happens under greedy play shows
+  how long a player lasts *without* building structure. Players who build
+  walls (thick same-mark blocks, which contain no alternating triple) keep
+  their supply of safe moves and last much longer.
 - Wasting search simulations on immediately losing moves is expensive when
   they are the majority. That is the case for proof propagation
   (MCTS-Solver) in the upgrades list.

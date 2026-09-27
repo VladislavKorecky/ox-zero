@@ -70,7 +70,7 @@ One logit per cell. Illegal cells (occupied, or all cells when the game is over)
 conv 1×1 (F→1) → BN → ReLU → flatten (S²) → linear → 256 → ReLU → linear → 1 → tanh
 ```
 
-**Decided:** a single scalar `v ∈ [-1, 1]`, from the perspective of the side to move: `+1` certain win, `0` draw, `-1` certain loss. The CLI displays `(v + 1) / 2`. Confirmed by the game experiments: no draw in 12,500 games from 5x5 up, and 4x4 is decisive under perfect play ([open-questions.md](open-questions.md#results-2026-09-27)). Deferred: [win/draw/loss head](upgrades.md#network), to be revisited only if trained agents on large boards start drawing.
+**Decided:** a single scalar `v ∈ [-1, 1]`, from the perspective of the side to move: `+1` certain win, `0` draw, `-1` certain loss. The CLI displays `(v + 1) / 2`. The game experiments found no draw in 12,500 games from 5x5 up, and 4x4 is decisive under perfect play ([open-questions.md](open-questions.md#results-2026-09-27)), but that is random-strength play. A full board with no line exists (same-mark bands two cells thick), and two players who both build such walls reach it, so self-play could converge on draws the way tic-tac-toe does. Deferred: [win/draw/loss head](upgrades.md#network); the trigger is the logged self-play draw rate.
 
 ## Loss
 
