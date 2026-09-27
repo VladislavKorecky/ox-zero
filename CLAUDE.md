@@ -10,7 +10,7 @@ AlphaZero engine and analysis tooling for the OXOX board game. Project descripti
 - Don't shy away from explaining non-obvious operations (tensor reshapes, masking, normalisation, backprop details). A short "how this works" comment above a tricky block is welcome, not noise.
 
 - Coordinates are `row,col`, zero-based, row 0 at the top, column 0 at the left. Same convention in the CLI, the code, and the tests. Never introduce a second one.
-- The CLI's behaviour is specified in the README's Usage section. Implement to that spec; change the spec first if it needs changing.
+- The CLI's behaviour is specified in `docs/cli.md`. Implement to that spec; change the spec first if it needs changing.
 
 ## Workflow
 

@@ -1,4 +1,4 @@
-"""JSON reports, in the shape specified in the README (`--json`).
+"""JSON reports, in the shape specified in docs/cli.md (`--json`).
 
 Kept separate from `render` because JSON must never depend on terminal
 capabilities: it is the machine interface and stays byte-for-byte stable.
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ox_zero.engine import Analysis
+from ox_zero.cli.engine_port import Analysis
 from ox_zero.game import Cell, State, is_draw, to_board_string
 
 # Four decimals is more precision than any engine estimate deserves, and it

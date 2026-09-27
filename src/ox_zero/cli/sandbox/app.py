@@ -33,7 +33,7 @@ from textual.worker import get_current_worker
 
 from ox_zero.cli import render
 from ox_zero.cli.sandbox.session import Result, Session
-from ox_zero.engine import Analysis, Engine
+from ox_zero.cli.engine_port import Analysis, Engine
 from ox_zero.game import Cell, State, is_terminal
 
 # How often the running search pushes a snapshot to the screen. Faster than
@@ -200,11 +200,12 @@ class SandboxApp(App[None]):
     def _search(self, state: State) -> None:
         """Runs in a background thread: stream snapshots to the UI thread.
 
-        Caveat for the real engine (roadmap step 3): a thread shares Python's
-        GIL with the UI. The dummy sleeps between steps, which releases it;
-        a pure-Python MCTS loop that never blocks would starve the screen
-        and make it laggy. It will need to yield regularly, or run in a
-        separate process.
+        Caveat for any engine plugged in here: `search()` runs on this
+        thread, which shares Python's GIL with the UI. Code that computes
+        without ever blocking starves the screen and makes it laggy (the
+        placeholder sleeps between steps, which releases the GIL). An
+        adapter for a CPU-heavy engine may need to yield regularly or run
+        the search in another process.
         """
         worker = get_current_worker()
         last_emit = -float("inf")

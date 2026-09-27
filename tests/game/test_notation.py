@@ -1,6 +1,6 @@
 """Tests for position notation: cells, move lists, and board strings.
 
-The formats are specified in the README's "Positions and moves" section.
+The formats are specified in docs/cli.md, "Positions and moves".
 Cells are `row,col`, zero-based, row 0 at the top.
 """
 

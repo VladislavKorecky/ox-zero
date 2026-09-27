@@ -1,4 +1,4 @@
-"""Tests for `analyze --live` (README, "Live analysis")."""
+"""Tests for `analyze --live` (docs/cli.md, "Live analysis")."""
 
 import io
 import json
@@ -12,14 +12,15 @@ from typer.testing import CliRunner
 from ox_zero.cli import app as app_module
 from ox_zero.cli.app import app
 from ox_zero.cli.live import run_live
-from ox_zero.engine import Analysis, DummyEngine
+from ox_zero.cli.engine_port import Analysis
+from ox_zero.cli.placeholder import PlaceholderEngine
 from ox_zero.game import play
 
 POSITION = play([(5, 5), (6, 6), (5, 6)])
 
 
-def fast_engine() -> DummyEngine:
-    return DummyEngine(seed=0, rate=math.inf)
+def fast_engine() -> PlaceholderEngine:
+    return PlaceholderEngine(seed=0, rate=math.inf)
 
 
 def json_lines(capsys) -> list[dict]:

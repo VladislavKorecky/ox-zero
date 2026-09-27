@@ -1,6 +1,6 @@
 """Text notation for OXOX positions: cells, move lists, and board strings.
 
-The formats are specified in the README's "Positions and moves" section:
+The formats are specified in docs/cli.md, "Positions and moves":
 
 - A cell is `row,col`, zero-based, row 0 at the top, column 0 at the left.
 - A position is either a *move list* (cells in the order played, X first) or a

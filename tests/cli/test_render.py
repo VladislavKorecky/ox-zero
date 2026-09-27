@@ -5,7 +5,7 @@ sandbox. Layout is checked on plain text; colour on a few spot-checked styles.
 from rich.console import Console
 
 from ox_zero.cli import render
-from ox_zero.engine import Analysis
+from ox_zero.cli.engine_port import Analysis
 from ox_zero.game import initial_state, legal_moves, play
 
 POSITION = play([(5, 5), (6, 6), (5, 6)])

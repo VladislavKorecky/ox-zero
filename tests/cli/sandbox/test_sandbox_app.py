@@ -12,7 +12,7 @@ from textual.widgets import Static
 
 from ox_zero.cli.sandbox.app import BoardView, SandboxApp
 from ox_zero.cli.sandbox.session import Session
-from ox_zero.engine import DummyEngine
+from ox_zero.cli.placeholder import PlaceholderEngine
 from ox_zero.game import to_board_string
 
 
@@ -20,7 +20,7 @@ def make_app(*moves: str) -> SandboxApp:
     # The realistic rate, not an unthrottled one: a thread that never sleeps
     # hogs Python's GIL and starves the UI's event loop, making every test
     # take seconds.
-    engine = DummyEngine(seed=0, rate=2000)
+    engine = PlaceholderEngine(seed=0, rate=2000)
     return SandboxApp(Session.from_tokens(list(moves)), engine, top_n=3)
 
 

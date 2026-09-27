@@ -1,6 +1,6 @@
 """Tests for the sandbox's command logic, independent of the screen.
 
-The commands are specified in the README's `sandbox` section.
+The commands are specified in docs/cli.md, `sandbox` section.
 """
 
 import pytest

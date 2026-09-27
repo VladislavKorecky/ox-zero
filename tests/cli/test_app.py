@@ -1,5 +1,5 @@
 """End-to-end tests of `ox-zero analyze` and `ox-zero best` through Typer's
-test runner. The README's Usage section is the spec.
+test runner. docs/cli.md is the spec.
 
 The runner's stdout is not a terminal, so all output here is plain text:
 exactly what a pipe would receive.
@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 
 from ox_zero.cli import app as app_module
 from ox_zero.cli.app import app
-from ox_zero.engine import DummyEngine
+from ox_zero.cli.placeholder import PlaceholderEngine
 from ox_zero.game import play, to_board_string
 
 runner = CliRunner()
@@ -24,14 +24,14 @@ FINISHED = ["5,5", "6,6", "5,7", "5,6"]
 
 @pytest.fixture(autouse=True)
 def fast_engine(monkeypatch):
-    """Swap in a dummy without the fake throughput limit, so tests don't sleep."""
+    """Swap in a placeholder engine without the fake throughput limit, so tests don't sleep."""
     calls = []
 
     def load(model, seed):
         calls.append((model, seed))
         if model is not None and not model.exists():
             raise FileNotFoundError(f"model checkpoint not found: {model}")
-        return DummyEngine(seed=0 if seed is None else seed, rate=math.inf)
+        return PlaceholderEngine(seed=0 if seed is None else seed, rate=math.inf)
 
     monkeypatch.setattr(app_module, "load_engine", load)
     return calls

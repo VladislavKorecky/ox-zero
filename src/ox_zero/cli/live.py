@@ -1,7 +1,7 @@
 """`analyze --live`: keep searching and stream refreshed reports.
 
 The engine's `search()` yields snapshots far more often than anyone can read
-them (the dummy yields every 50 simulations). This module *throttles* them:
+them (the placeholder engine yields every 50 simulations). This module *throttles* them:
 it keeps consuming snapshots but only emits one when `interval` seconds have
 passed since the last emit, roughly twice a second by default.
 
@@ -25,7 +25,7 @@ from rich.text import Text
 
 from ox_zero.cli import render
 from ox_zero.cli.report import report_json
-from ox_zero.engine import Analysis, Engine
+from ox_zero.cli.engine_port import Analysis, Engine
 from ox_zero.game import Cell, State
 
 REFRESH_INTERVAL = 0.5
@@ -95,7 +95,7 @@ def run_live(
 
     if json_output:
         # The final snapshot at the cap may have been skipped by the throttle;
-        # the README promises the last line is the final report.
+        # the spec (docs/cli.md) promises the last line is the final report.
         if not interrupted and last is not None and last is not emitted:
             emit_json(last)
     elif not live and last is not None:
