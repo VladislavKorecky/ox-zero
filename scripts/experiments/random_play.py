@@ -1,6 +1,6 @@
 """Game statistics under random and greedy play, for several board sizes.
 
-Plan 01 (docs/plans/01-game-experiments.md), step 4. The numbers feed the
+Plan 01 (docs/plans/archive/01-game-experiments.md), step 4. The numbers feed the
 open constants in docs/design/open-questions.md:
 
 - game length and draw rate -> temperature cutoff, value head type, buffer size;

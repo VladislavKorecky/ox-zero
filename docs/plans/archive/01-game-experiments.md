@@ -4,7 +4,7 @@
 |---|---|
 | Status | Ready for implementation |
 | Branches | Plan: `plan/game-experiments`. Implementation: `feat/game-experiments`. |
-| Design references | [open-questions.md](../design/open-questions.md) (what to measure and why), [engineering.md](../design/engineering.md#testing) (the solver as a test fixture), [search.md](../design/search.md#constants) (the constants waiting on the data) |
+| Design references | [open-questions.md](../../design/open-questions.md) (what to measure and why), [engineering.md](../../design/engineering.md#testing) (the solver as a test fixture), [search.md](../../design/search.md#constants) (the constants waiting on the data) |
 | Depends on | Nothing. Only `ox_zero.game`, which is done. |
 
 ## Goal
