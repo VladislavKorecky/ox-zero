@@ -36,10 +36,11 @@ from ox_zero.cli import render
 from ox_zero.cli.report import best_json, finished_best_json, report_json
 from ox_zero.cli.sandbox.app import run_sandbox
 from ox_zero.cli.sandbox.session import Session
-from ox_zero.engine import Analysis, DummyEngine, Engine, load_engine
+from ox_zero.cli.engine_port import Analysis, Engine
+from ox_zero.cli.placeholder import PlaceholderEngine, load_engine
 from ox_zero.game import Cell, PositionError, State, is_terminal, parse_cell, parse_position
 
-# AlphaZero's playout budget per move in the original paper. The dummy engine
+# AlphaZero's playout budget per move in the original paper. The placeholder engine
 # "runs" at ~2000 simulations per second, so this takes about 0.4 s.
 DEFAULT_SIMULATIONS = 800
 
@@ -224,7 +225,7 @@ def _load(model: Path | None, seed: int | None, err: Console) -> Engine:
         engine = load_engine(model, seed)
     except FileNotFoundError as error:
         _fail(err, str(error))
-    if isinstance(engine, DummyEngine):
+    if isinstance(engine, PlaceholderEngine):
         err.print(
             "[dim]Using the placeholder engine (no trained model yet): scores are not meaningful.[/]"
         )

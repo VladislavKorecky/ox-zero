@@ -18,7 +18,7 @@ from rich.console import Group, RenderableType
 from rich.style import Style
 from rich.text import Text
 
-from ox_zero.engine import Analysis
+from ox_zero.cli.engine_port import Analysis
 from ox_zero.game import Cell, Mark, State, format_cell, is_draw
 
 CELL_WIDTH = 4

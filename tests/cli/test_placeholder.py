@@ -1,8 +1,6 @@
-"""Tests for the engine interface (`Analysis`, `analyze`, `load_engine`) and the
-placeholder `DummyEngine`.
-
-The dummy's numbers are meaningless by design. What is tested is the contract
-the CLI relies on, which the real MCTS engine will have to honour too.
+"""Tests for `PlaceholderEngine`, the stand-in engine the CLI runs on until a
+real one exists. Its numbers are meaningless by design; what is tested is the
+engine-port contract the CLI relies on.
 """
 
 import itertools
@@ -10,40 +8,19 @@ import math
 
 import pytest
 
-from ox_zero.engine import Analysis, DummyEngine, analyze, load_engine
-from ox_zero.game import initial_state, legal_moves, play
+from ox_zero.cli.engine_port import Analysis, analyze
+from ox_zero.cli.placeholder import PlaceholderEngine, load_engine
+from ox_zero.game import legal_moves, play
 
 POSITION = play([(5, 5), (6, 6), (5, 6)])
 
 
-def fast_engine(seed: int = 0) -> DummyEngine:
+def fast_engine(seed: int = 0) -> PlaceholderEngine:
     # No fake throughput limit, so tests don't sleep.
-    return DummyEngine(seed=seed, rate=math.inf)
+    return PlaceholderEngine(seed=seed, rate=math.inf)
 
 
-# --- Analysis ----------------------------------------------------------------
-
-
-def test_top_ranks_by_score_then_board_order():
-    analysis = Analysis(
-        value=0.9,
-        scores={(0, 0): 0.2, (0, 1): 0.9, (1, 0): 0.5, (1, 1): 0.5},
-        simulations=10,
-    )
-    assert analysis.top(3) == [((0, 1), 0.9), ((1, 0), 0.5), ((1, 1), 0.5)]
-
-
-def test_top_with_n_larger_than_move_count_returns_all():
-    analysis = Analysis(value=0.5, scores={(0, 0): 0.5}, simulations=1)
-    assert analysis.top(10) == [((0, 0), 0.5)]
-
-
-def test_best_is_the_top_move():
-    analysis = Analysis(value=0.9, scores={(0, 0): 0.2, (0, 1): 0.9}, simulations=10)
-    assert analysis.best == ((0, 1), 0.9)
-
-
-# --- DummyEngine: the Engine contract ----------------------------------------
+# --- The engine-port contract ----------------------------------------
 
 
 def test_scores_every_legal_move_with_a_probability():
@@ -111,25 +88,20 @@ def test_searching_a_finished_game_is_an_error():
         next(fast_engine().search(finished))
 
 
-def test_budget_must_be_positive():
-    with pytest.raises(ValueError):
-        analyze(fast_engine(), initial_state(), simulations=0)
-
-
 def test_rate_limits_throughput():
     # 1000 simulations at 20k/s must take at least ~50 ms.
     import time
 
     start = time.perf_counter()
-    analyze(DummyEngine(seed=0, rate=20_000), POSITION, simulations=1000)
+    analyze(PlaceholderEngine(seed=0, rate=20_000), POSITION, simulations=1000)
     assert time.perf_counter() - start >= 0.04
 
 
 # --- load_engine -------------------------------------------------------------
 
 
-def test_without_a_model_the_dummy_is_used():
-    assert isinstance(load_engine(None, seed=0), DummyEngine)
+def test_without_a_model_the_placeholder_is_used():
+    assert isinstance(load_engine(None, seed=0), PlaceholderEngine)
 
 
 def test_missing_model_path_is_an_error(tmp_path):
@@ -137,7 +109,7 @@ def test_missing_model_path_is_an_error(tmp_path):
         load_engine(tmp_path / "nope.pt", seed=0)
 
 
-def test_existing_model_path_still_loads_the_dummy_for_now(tmp_path):
+def test_existing_model_path_still_loads_the_placeholder_for_now(tmp_path):
     checkpoint = tmp_path / "model.pt"
     checkpoint.write_bytes(b"")
-    assert isinstance(load_engine(checkpoint, seed=0), DummyEngine)
+    assert isinstance(load_engine(checkpoint, seed=0), PlaceholderEngine)

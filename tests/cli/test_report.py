@@ -3,7 +3,7 @@
 import json
 
 from ox_zero.cli.report import best_json, report_json
-from ox_zero.engine import Analysis
+from ox_zero.cli.engine_port import Analysis
 from ox_zero.game import legal_moves, play, to_board_string
 
 POSITION = play([(5, 5), (6, 6), (5, 6)])

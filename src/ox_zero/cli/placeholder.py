@@ -1,16 +1,19 @@
-"""A placeholder engine with no intelligence, and how engines are loaded.
+"""A stand-in engine with no intelligence, and the CLI's engine loader.
 
-`DummyEngine` exists so the CLI can be built and tested before the real
-AlphaZero search exists (roadmap step 3). Its numbers mean nothing. It only
-imitates the *behaviour* of a real search so the interface can be exercised:
+`PlaceholderEngine` lets the CLI run end to end before any real engine
+exists. Its numbers mean nothing. It only imitates how the CLI expects
+results to *behave*, so the interface can be exercised and tested:
 
-- Scores are noisy at first and settle as simulations accumulate, the way MCTS
-  estimates converge. (A Monte Carlo mean over n samples has a standard error
-  proportional to 1/sqrt(n), so the dummy's noise shrinks at that rate too.)
-- It takes time. A real search runs at some number of simulations per second;
-  the dummy sleeps to fake a throughput, so progress bars and live refreshes
-  behave realistically.
+- Scores are noisy at first and settle as the search count grows, so live
+  views visibly converge. (The noise shrinks as 1/sqrt(n), like the standard
+  error of an average over n samples.)
+- It takes time. It sleeps to fake a throughput, so progress bars and live
+  refreshes behave realistically.
 - It is reproducible: the same seed and position give the same snapshots.
+
+None of this is a model for how a real engine should work inside. A real
+engine is connected by an adapter implementing `engine_port.Engine`, returned
+from `load_engine` below.
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 
-from ox_zero.engine.analysis import Analysis, Engine
+from ox_zero.cli.engine_port import Analysis, Engine
 from ox_zero.game import Cell, State, is_terminal, legal_moves
 
 # Simulations between snapshots. Small enough for smooth progress bars, large
@@ -33,7 +36,7 @@ _STEP = 50
 _INITIAL_NOISE = 0.15
 
 
-class DummyEngine:
+class PlaceholderEngine:
     """Deterministic pseudo-random scores that converge over time.
 
     Args:
@@ -83,18 +86,18 @@ class DummyEngine:
 
 
 def load_engine(model: Path | None, seed: int | None) -> Engine:
-    """The engine for a checkpoint path, or the default when `model` is `None`.
+    """The engine the CLI should use, for the `--model` and `--seed` flags.
 
-    There are no trained checkpoints yet, so this always returns a
-    `DummyEngine`. A path is still checked for existence, so the `--model`
-    flag already behaves as specified.
+    This is the one place a real engine gets connected. Until then it always
+    returns a `PlaceholderEngine`. A given path is still checked for
+    existence, so the `--model` flag already behaves as specified.
 
     Raises:
         FileNotFoundError: `model` was given but does not exist.
     """
     if model is not None and not model.exists():
         raise FileNotFoundError(f"model checkpoint not found: {model}")
-    return DummyEngine(seed=seed)
+    return PlaceholderEngine(seed=seed)
 
 
 def _base_score(state: State, move: Cell, rng: random.Random) -> float:

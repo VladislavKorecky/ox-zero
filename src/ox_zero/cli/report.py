@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ox_zero.engine import Analysis
+from ox_zero.cli.engine_port import Analysis
 from ox_zero.game import Cell, State, is_draw, to_board_string
 
 # Four decimals is more precision than any engine estimate deserves, and it
