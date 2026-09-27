@@ -28,8 +28,6 @@ Ownership of the marks does not matter. Whoever places the mark that completes a
 
 ## Quickstart
 
-> The CLI works, but the engine behind it is a **placeholder** until roadmap step 3, so the scores it prints are meaningless.
-
 ```bash
 uv sync                                    # install
 uv run ox-zero analyze 5,5 6,6 5,6         # score every move in a position
