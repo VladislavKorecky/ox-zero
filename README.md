@@ -118,11 +118,18 @@ Top 3
 
 > The numbers in this example are made up to show the layout. They are not the output of any engine, and a trained model will produce different values.
 
-If the position is already decided, the report says so instead of running the engine:
+If the position is already decided, the report says so instead of running the engine, and shows the board with the winning line highlighted:
 
 ```
 $ ox-zero analyze 5,5 6,6 5,7 5,6
 Game over: O wins (X O X at 5,5 5,6 5,7)
+
+       0   1   2   3   4   5   6   7   8   9  10  11
+  0    .   .   .   .   .   .   .   .   .   .   .   .
+  ...
+  5    .   .   .   .   .   X   O   X   .   .   .   .
+  6    .   .   .   .   .   .   O   .   .   .   .   .
+  ...
 ```
 
 With `--json`, the same information is emitted as one object:
@@ -165,6 +172,8 @@ $ ox-zero best 5,5 6,6 5,6
 ```
 
 With `--json`: `{"move": [5, 7], "score": 0.47}`.
+
+If the position is already decided there is no move to print. `best` then writes the game-over line to stderr, or `{"move": null, "score": null, "result": "O"}` with `--json`, and exits with status 1 so scripts notice.
 
 ### `sandbox`
 
