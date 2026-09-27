@@ -95,7 +95,7 @@ def run_live(
 
     if json_output:
         # The final snapshot at the cap may have been skipped by the throttle;
-        # the README promises the last line is the final report.
+        # the spec (docs/cli.md) promises the last line is the final report.
         if not interrupted and last is not None and last is not emitted:
             emit_json(last)
     elif not live and last is not None:

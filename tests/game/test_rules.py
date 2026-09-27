@@ -1,6 +1,6 @@
 """Tests for the OXOX rules: board state, move generation, win and draw detection.
 
-Coordinates are `(row, col)`, zero-based, row 0 at the top (see README).
+Coordinates are `(row, col)`, zero-based, row 0 at the top (see docs/cli.md).
 Positions are mostly built with `play(moves)`, which replays a move list from
 the empty board: X moves first, then the sides alternate.
 """
@@ -41,7 +41,7 @@ def test_initial_state_is_empty_with_x_to_move():
 
 
 def test_every_cell_is_legal_on_empty_board_in_board_order():
-    # Board order: left to right, top to bottom (README, `moves` in --json).
+    # Board order: left to right, top to bottom (docs/cli.md, `moves` in --json).
     expected = [(row, col) for row in range(12) for col in range(12)]
     assert legal_moves(initial_state()) == expected
 

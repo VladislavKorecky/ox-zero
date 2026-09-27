@@ -7,7 +7,7 @@ nothing decides whether colour is used. That is the `Console`'s job: Rich
 drops all styling automatically when output is not a terminal or `NO_COLOR`
 is set, so the plain-text layout below is exactly what pipes receive.
 
-Layout (from the README): a 4-character row label, then one right-aligned
+Layout (from docs/cli.md): a 4-character row label, then one right-aligned
 4-character column per cell, so `100` still fits with a space before it.
 """
 

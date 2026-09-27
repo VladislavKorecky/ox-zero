@@ -1,4 +1,4 @@
-"""Tests for the JSON report shape specified in the README (`--json`)."""
+"""Tests for the JSON report shape specified in docs/cli.md (`--json`)."""
 
 import json
 

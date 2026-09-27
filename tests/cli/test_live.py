@@ -1,4 +1,4 @@
-"""Tests for `analyze --live` (README, "Live analysis")."""
+"""Tests for `analyze --live` (docs/cli.md, "Live analysis")."""
 
 import io
 import json

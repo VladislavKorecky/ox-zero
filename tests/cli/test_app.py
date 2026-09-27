@@ -1,5 +1,5 @@
 """End-to-end tests of `ox-zero analyze` and `ox-zero best` through Typer's
-test runner. The README's Usage section is the spec.
+test runner. docs/cli.md is the spec.
 
 The runner's stdout is not a terminal, so all output here is plain text:
 exactly what a pipe would receive.

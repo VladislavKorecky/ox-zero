@@ -1,8 +1,8 @@
 """The `ox-zero` command: `analyze`, `best`, and `sandbox`.
 
-The README's Usage section is the specification; this module implements it.
+docs/cli.md is the specification; this module implements it.
 
-Output conventions (README, "Output conventions"):
+Output conventions (docs/cli.md, "Output conventions"):
 - Results go to stdout; progress bars, notices, and errors go to stderr, so
   piping `best` or `--json` output always yields clean data.
 - Styling comes from Rich, which drops it by itself when the stream is not a

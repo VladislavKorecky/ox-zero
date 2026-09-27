@@ -1,4 +1,4 @@
-"""JSON reports, in the shape specified in the README (`--json`).
+"""JSON reports, in the shape specified in docs/cli.md (`--json`).
 
 Kept separate from `render` because JSON must never depend on terminal
 capabilities: it is the machine interface and stays byte-for-byte stable.

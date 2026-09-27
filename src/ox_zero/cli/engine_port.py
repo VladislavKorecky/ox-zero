@@ -12,7 +12,7 @@ Today the only implementation is `PlaceholderEngine` (see `placeholder.py`).
 Connecting a real engine means writing one adapter that implements `Engine`
 below, and returning it from the CLI's engine loader.
 
-The two requirements, both fixed by the README's Usage section:
+The two requirements, both fixed by the CLI specification (docs/cli.md):
 
 - *What* is shown: a win probability for the side to move after each legal
   move, one for the position itself, and how much search produced them.
