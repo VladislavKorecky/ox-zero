@@ -39,6 +39,7 @@ The command is `ox-zero`. `analyze` and `best` take a position, print a human-re
   - Move list: cells in the order they were played, X first, e.g. `5,5 6,6 5,6`.
   - Board string: 144 characters, row 0 first, `X`, `O`, or `_` for empty, e.g. `____...X..._` (12 rows × 12 columns).
 - The side to move is derived from the mark counts. X always moves first, so equal counts mean X to move and one extra X means O to move. Any other count is rejected as illegal.
+- A board string does not record move order, so a decided board is read as follows: the side that moved last (the side *not* to move) placed the winning mark. The board is rejected as unreachable if no single mark of the last mover lies on every alternating line, because one move must have completed all of them at once.
 
 ### Commands
 
@@ -52,9 +53,9 @@ Flags. Not every flag makes sense for every command; the last three columns say 
 
 | Flag | Description | `analyze` | `best` | `sandbox` |
 |------|-------------|:---:|:---:|:---:|
-| `--simulations N` | Tree-search playouts per analysis. Strength versus speed. With `--live`, an optional cap. | ✓ | ✓ | |
+| `--simulations N` | Tree-search playouts per analysis. Strength versus speed. Default 800. With `--live`, an optional cap (no cap by default). | ✓ | ✓ | |
 | `--live` | Keep analysing and stream reports until interrupted. See [Live analysis](#live-analysis). | ✓ | | |
-| `--model PATH` | Checkpoint to load. Defaults to the newest in `checkpoints/`. | ✓ | ✓ | ✓ |
+| `--model PATH` | Checkpoint to load. Defaults to the newest in `checkpoints/`. With no checkpoint available, a placeholder engine is used and a notice says so. A path that does not exist is an error. | ✓ | ✓ | ✓ |
 | `--top N` | Number of candidate moves in the top section. Default 3. | ✓ | | ✓ |
 | `--seed N` | Fix randomness for reproducible output. | ✓ | ✓ | ✓ |
 | `--json` | Machine-readable output instead of text. | ✓ | ✓ | |
@@ -66,9 +67,27 @@ Why the gaps:
 - `--top` does not apply to `best` because `best` prints exactly one move. For a ranked list of candidates, use `analyze --top N`.
 - `--json` does not apply to the sandbox because it is an interactive screen, not a report.
 
+### Output conventions
+
+- **stdout is for results, stderr is for everything else.** Progress bars, notices, and error messages go to stderr, so `ox-zero best ... | other-tool` and `ox-zero analyze ... --json | jq` always see clean output.
+- **Colour only on a terminal.** Colour and styling are used when the output is a terminal and dropped when it is piped or redirected. The [`NO_COLOR`](https://no-color.org/) environment variable turns colour off everywhere.
+- `best` output and all `--json` output are always plain.
+- Invalid input exits with status 2 and an error that echoes the input with a caret under the offending token:
+
+  ```
+  $ ox-zero analyze 5,5 6,6 5,5
+  Error: cannot play 5,5: cell is occupied
+    5,5 6,6 5,5
+            ^^^
+  ```
+
 ### `analyze`
 
 Scores are the engine's estimated win probability for the side to move after playing that cell, as a percentage. Every legal move gets a score, shown in place on the board. Occupied cells show their mark. Cells are fixed-width so the grid keeps its shape regardless of the values.
+
+On a colour terminal the board is a heatmap: each empty cell's background runs from red (low score) through yellow to green (high score). X and O are drawn in two distinct bold colours, the top N candidates are emphasised, the last move played is underlined, and a winning line is highlighted. The eval line includes a bar showing the win probability for the side to move.
+
+While the search runs, a progress bar with the simulation count and rate is shown on stderr. It disappears once the report is printed, and it is not shown when stderr is not a terminal.
 
 ```
 $ ox-zero analyze 5,5 6,6 5,6
@@ -89,7 +108,7 @@ O to move (3 marks on board)
  10   11  10   9   8   8   8   8   8   9  10  11  12
  11   12  11  10   9   9   9   9   9  10  11  12  13
 
-Eval: 47% for O
+Eval ███████████▊░░░░░░░░░░░░░ 47% for O
 
 Top 3
   1. 5,7   47%
@@ -167,7 +186,7 @@ O to move (3 marks on board)              analysing: 12400 simulations
 
 [board with scores, as in analyze]
 
-Eval: 47% for O
+Eval ███████████▊░░░░░░░░░░░░░ 47% for O
 
 Top 3
   1. 5,7   47%
@@ -193,6 +212,17 @@ Commands available inside the sandbox:
 | `reset` | Clear to an empty board. |
 | `export` | Show the current position as a board string in the message line, ready to paste into `analyze`. |
 | `quit` | Leave the sandbox. |
+
+A position loaded as a board string has no move history. It becomes the starting point: `undo` stops there, and the move history lists only the moves played after it.
+
+Shortcuts, for when typing a command is slower than pressing a key:
+
+| Key / action | Effect |
+|-------|--------|
+| Click an empty cell | Play that cell. |
+| `ctrl+z` / `ctrl+y` | `undo` / `redo`. |
+| `ctrl+p` | Toggle `pause` / `resume`. |
+| `ctrl+q` | `quit`. |
 
 ## Development
 
