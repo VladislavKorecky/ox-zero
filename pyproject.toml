@@ -7,8 +7,13 @@ license = "MIT"
 requires-python = ">=3.14"
 dependencies = [
     "numpy>=2.5.3",
+    "textual>=8.2.8",
     "torch>=2.14.0",
+    "typer>=0.27.2",
 ]
+
+[project.scripts]
+ox-zero = "ox_zero.cli.app:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -19,8 +24,12 @@ packages = ["src/ox_zero"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Textual's test harness (`App.run_test`) is async; let pytest-asyncio run
+# `async def` tests without a per-test marker.
+asyncio_mode = "auto"
 
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
 ]

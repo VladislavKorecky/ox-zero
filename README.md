@@ -2,7 +2,7 @@
 
 An [AlphaZero](https://arxiv.org/abs/1712.01815)-style engine for **OXOX**, a two-player board game derived from Tic-tac-toe, together with tooling for analyzing positions and studying the game.
 
-> **Status:** early development. There is no working engine yet; this repository currently holds the game rules (roadmap step 1).
+> **Status:** early development. The game rules (roadmap step 1) and the CLI (step 2) are done. The CLI runs on a placeholder engine with meaningless scores until the real one (step 3) exists.
 
 ## The game
 
@@ -28,7 +28,7 @@ Ownership of the marks does not matter. Whoever places the mark that completes a
 
 ## Usage
 
-> **Not implemented yet.** This section is the design specification for the CLI (roadmap step 2). It is written as if the tool existed so that the implementation has a fixed target.
+> The CLI is implemented, but the engine behind it is a **placeholder** until roadmap step 3: every command works, and the scores it prints are meaningless. The CLI says so on stderr each time it starts the engine.
 
 The command is `ox-zero`. `analyze` and `best` take a position, print a human-readable report by default, and print JSON with `--json`. `sandbox` is an interactive screen.
 
@@ -39,6 +39,7 @@ The command is `ox-zero`. `analyze` and `best` take a position, print a human-re
   - Move list: cells in the order they were played, X first, e.g. `5,5 6,6 5,6`.
   - Board string: 144 characters, row 0 first, `X`, `O`, or `_` for empty, e.g. `____...X..._` (12 rows × 12 columns).
 - The side to move is derived from the mark counts. X always moves first, so equal counts mean X to move and one extra X means O to move. Any other count is rejected as illegal.
+- A board string does not record move order, so a decided board is read as follows: the side that moved last (the side *not* to move) placed the winning mark. The board is rejected as unreachable if no single mark of the last mover lies on every alternating line, because one move must have completed all of them at once.
 
 ### Commands
 
@@ -52,9 +53,9 @@ Flags. Not every flag makes sense for every command; the last three columns say 
 
 | Flag | Description | `analyze` | `best` | `sandbox` |
 |------|-------------|:---:|:---:|:---:|
-| `--simulations N` | Tree-search playouts per analysis. Strength versus speed. With `--live`, an optional cap. | ✓ | ✓ | |
+| `--simulations N` | Tree-search playouts per analysis. Strength versus speed. Default 800. With `--live`, an optional cap (no cap by default). | ✓ | ✓ | |
 | `--live` | Keep analysing and stream reports until interrupted. See [Live analysis](#live-analysis). | ✓ | | |
-| `--model PATH` | Checkpoint to load. Defaults to the newest in `checkpoints/`. | ✓ | ✓ | ✓ |
+| `--model PATH` | Checkpoint to load. Defaults to the newest in `checkpoints/`. With no checkpoint available, a placeholder engine is used and a notice says so. A path that does not exist is an error. | ✓ | ✓ | ✓ |
 | `--top N` | Number of candidate moves in the top section. Default 3. | ✓ | | ✓ |
 | `--seed N` | Fix randomness for reproducible output. | ✓ | ✓ | ✓ |
 | `--json` | Machine-readable output instead of text. | ✓ | ✓ | |
@@ -66,9 +67,27 @@ Why the gaps:
 - `--top` does not apply to `best` because `best` prints exactly one move. For a ranked list of candidates, use `analyze --top N`.
 - `--json` does not apply to the sandbox because it is an interactive screen, not a report.
 
+### Output conventions
+
+- **stdout is for results, stderr is for everything else.** Progress bars, notices, and error messages go to stderr, so `ox-zero best ... | other-tool` and `ox-zero analyze ... --json | jq` always see clean output.
+- **Colour only on a terminal.** Colour and styling are used when the output is a terminal and dropped when it is piped or redirected. The [`NO_COLOR`](https://no-color.org/) environment variable turns colour off everywhere.
+- `best` output and all `--json` output are always plain.
+- Invalid input exits with status 2 and an error that echoes the input with a caret under the offending token:
+
+  ```
+  $ ox-zero analyze 5,5 6,6 5,5
+  Error: cannot play 5,5: cell is occupied
+    5,5 6,6 5,5
+            ^^^
+  ```
+
 ### `analyze`
 
 Scores are the engine's estimated win probability for the side to move after playing that cell, as a percentage. Every legal move gets a score, shown in place on the board. Occupied cells show their mark. Cells are fixed-width so the grid keeps its shape regardless of the values.
+
+On a colour terminal the board is a heatmap: each empty cell's background runs from red (low score) through yellow to green (high score). X and O are drawn in two distinct bold colours, the top N candidates are emphasised, the last move played is underlined, and a winning line is highlighted. The eval line includes a bar showing the win probability for the side to move.
+
+While the search runs, a progress bar with the simulation count and rate is shown on stderr. It disappears once the report is printed, and it is not shown when stderr is not a terminal.
 
 ```
 $ ox-zero analyze 5,5 6,6 5,6
@@ -89,7 +108,7 @@ O to move (3 marks on board)
  10   11  10   9   8   8   8   8   8   9  10  11  12
  11   12  11  10   9   9   9   9   9  10  11  12  13
 
-Eval: 47% for O
+Eval ███████████▊░░░░░░░░░░░░░ 47% for O
 
 Top 3
   1. 5,7   47%
@@ -99,11 +118,18 @@ Top 3
 
 > The numbers in this example are made up to show the layout. They are not the output of any engine, and a trained model will produce different values.
 
-If the position is already decided, the report says so instead of running the engine:
+If the position is already decided, the report says so instead of running the engine, and shows the board with the winning line highlighted:
 
 ```
 $ ox-zero analyze 5,5 6,6 5,7 5,6
 Game over: O wins (X O X at 5,5 5,6 5,7)
+
+       0   1   2   3   4   5   6   7   8   9  10  11
+  0    .   .   .   .   .   .   .   .   .   .   .   .
+  ...
+  5    .   .   .   .   .   X   O   X   .   .   .   .
+  6    .   .   .   .   .   .   O   .   .   .   .   .
+  ...
 ```
 
 With `--json`, the same information is emitted as one object:
@@ -125,9 +151,9 @@ With `--json`, the same information is emitted as one object:
 
 Without `--live`, `analyze` runs `--simulations` playouts, prints one report, and exits. With `--live`, the engine keeps searching and the report is refreshed as the search deepens, roughly twice a second. It runs until you press Ctrl-C, or until the `--simulations` cap is reached if one is given.
 
-In text mode the report is redrawn in place, so the terminal shows one board whose numbers settle over time. It is the sandbox screen without the prompt.
+In text mode the report is redrawn in place, so the terminal shows one board whose numbers settle over time, with the simulation count (and the cap, if any) on the status line.
 
-With `--json`, the output is [JSON Lines](https://jsonlines.org/): every refresh writes one complete report object on its own line, in the same shape as above plus a `simulations` count. A consumer reads the stream line by line and keeps the most recent object; there is nothing to reassemble. When the cap is reached, the last line is the final report and the process exits with status 0. On Ctrl-C the stream simply ends.
+With `--json`, the output is [JSON Lines](https://jsonlines.org/): every refresh writes one complete report object on its own line, in the same shape as above plus a `simulations` count. A consumer reads the stream line by line and keeps the most recent object; there is nothing to reassemble. When the cap is reached, the last line is the final report and the process exits with status 0. On Ctrl-C the stream simply ends, with the conventional status 130.
 
 ```
 $ ox-zero analyze 5,5 6,6 5,6 --live --json
@@ -147,37 +173,40 @@ $ ox-zero best 5,5 6,6 5,6
 
 With `--json`: `{"move": [5, 7], "score": 0.47}`.
 
+If the position is already decided there is no move to print. `best` then writes the game-over line to stderr, or `{"move": null, "score": null, "result": "O"}` with `--json`, and exits with status 1 so scripts notice.
+
 ### `sandbox`
 
 An interactive screen for studying the game, in the spirit of a chess GUI's analysis mode. The sandbox takes over the terminal with a single view that is redrawn in place; there is no scrolling transcript. You play moves for both sides, and the engine analyses the current position continuously in the background, updating the scores on screen as its search deepens. Start from an empty board or from a given position.
 
-The screen shows, top to bottom:
+The screen shows:
 
-- **Status line.** Side to move, mark count, and the engine state: `analysing` with the number of simulations so far, or `paused`.
-- **Board.** The same board as `analyze`, with a score in every empty cell. While analysis is paused, empty cells show `.` instead of a score.
-- **Eval and top N candidates.** As in `analyze`.
-- **Move history.** The moves played so far, in order.
-- **Message line.** Feedback for the last command: errors, the output of `export`, or nothing.
-- **Prompt.** Where you type commands.
+- **Status line** (top). Side to move, mark count, and the engine state: `analysing` with the number of simulations so far, or `paused`.
+- **Board** (left). The same heatmap board as `analyze`, with a score in every empty cell. While analysis is paused, empty cells show `.` instead of a score.
+- **Side panel** (right of the board). Eval bar and top N candidates as in `analyze`, then the move history: the moves played so far, numbered in X-and-O pairs as in chess notation.
+- **Message line** (below the board). Feedback for the last command: errors, the output of `export`, or nothing.
+- **Prompt** (bottom). Where you type commands, above a footer listing the keyboard shortcuts.
 
 ```
 $ ox-zero sandbox 5,5 6,6 5,6
 
-O to move (3 marks on board)              analysing: 12400 simulations
+O to move (3 marks on board)      analysing: 12,400 simulations
 
-[board with scores, as in analyze]
+       0   1   2   3   4 …  11         Eval ███████████▊░░░░░░░░░░░░░ 47% for O
+  0   12  10   9   8   8 …  12
+  …                                    Top 3
+  5    8   7   6   5  15   X   X  47     1. 5,7   47%
+  6    8   7   6   5  16  36   O  29     2. 4,6   38%
+  …                                      3. 6,5   36%
 
-Eval: 47% for O
+                                       Moves: 1. 5,5 6,6  2. 5,6
 
-Top 3
-  1. 5,7   47%
-  2. 4,6   38%
-  3. 6,5   36%
+unknown command 'hello' (type help for the list)
 
-Moves: 5,5 6,6 5,6
-
-
->
+┌──────────────────────────────────────────────────────────────┐
+│ row,col to play  ·  help for commands                        │
+└──────────────────────────────────────────────────────────────┘
+ ^q Quit  ^z Undo  ^y Redo  ^p Pause/resume
 ```
 
 Whenever the position changes (a move is played or undone, a position is loaded, the board is reset), the engine drops its current search and starts on the new position. The screen redraws at once with the new board, and the scores fill in and settle as the search progresses. If the position is decided, the engine stops and the status line shows the result instead, e.g. `Game over: O wins (X O X at 5,5 5,6 5,7)`.
@@ -192,7 +221,19 @@ Commands available inside the sandbox:
 | `load <position>` | Jump to a position, given as a move list or board string. |
 | `reset` | Clear to an empty board. |
 | `export` | Show the current position as a board string in the message line, ready to paste into `analyze`. |
-| `quit` | Leave the sandbox. |
+| `help` | List the commands in the message line. |
+| `quit` | Leave the sandbox. `exit` works too. |
+
+A position loaded as a board string has no move history. It becomes the starting point: `undo` stops there, and the move history lists only the moves played after it.
+
+Shortcuts, for when typing a command is slower than pressing a key:
+
+| Key / action | Effect |
+|-------|--------|
+| Click an empty cell | Play that cell. |
+| `ctrl+z` / `ctrl+y` | `undo` / `redo`. |
+| `ctrl+p` | Toggle `pause` / `resume`. |
+| `ctrl+q` | `quit`. |
 
 ## Development
 
