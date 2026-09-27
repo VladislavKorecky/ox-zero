@@ -32,6 +32,14 @@ Committed outputs of the default runs. Each script writes two files:
 - `<name>.json`: the statistics and the parameters that produced them. Rerunning with the defaults regenerates it byte-for-byte.
 - `<name>.timing.json`: wall-clock times and throughput. These depend on the machine and change from run to run.
 
+## bench_search.py
+
+Speed of the engine's search, not a measurement of the game: simulations per second, evaluator calls per second, and the share of time spent in the evaluator, for one board size, evaluator (`network` with random weights, or `uniform`) and device. It prints a Markdown row for pasting into a PR. See [plan 02](../docs/plans/02-engine-search-network.md), step 8.
+
+```bash
+uv run python scripts/bench_search.py --size 12 --device mps   # defaults: 6x6, 800 simulations, 4x64 network, 3 repeats
+```
+
 ## Later
 
-Launching training, evaluating checkpoints, and similar runners will live here once the engine and training pipeline exist.
+Launching training, evaluating checkpoints, and similar runners will live here once the training pipeline exists.
