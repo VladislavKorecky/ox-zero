@@ -170,7 +170,7 @@ def _cell_maps(size: int) -> np.ndarray:
 
 
 def _side(cells: int) -> int:
-    size = int(round(cells**0.5))
+    size = round(cells**0.5)
     if size * size != cells:
         raise ValueError(f"a policy must have S² entries, got {cells}")
     return size
