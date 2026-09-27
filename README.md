@@ -151,7 +151,7 @@ With `--json`, the same information is emitted as one object:
 
 Without `--live`, `analyze` runs `--simulations` playouts, prints one report, and exits. With `--live`, the engine keeps searching and the report is refreshed as the search deepens, roughly twice a second. It runs until you press Ctrl-C, or until the `--simulations` cap is reached if one is given.
 
-In text mode the report is redrawn in place, so the terminal shows one board whose numbers settle over time. It is the sandbox screen without the prompt.
+In text mode the report is redrawn in place, so the terminal shows one board whose numbers settle over time, with the simulation count (and the cap, if any) on the status line.
 
 With `--json`, the output is [JSON Lines](https://jsonlines.org/): every refresh writes one complete report object on its own line, in the same shape as above plus a `simulations` count. A consumer reads the stream line by line and keeps the most recent object; there is nothing to reassemble. When the cap is reached, the last line is the final report and the process exits with status 0. On Ctrl-C the stream simply ends, with the conventional status 130.
 
