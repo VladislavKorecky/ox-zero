@@ -153,7 +153,7 @@ Without `--live`, `analyze` runs `--simulations` playouts, prints one report, an
 
 In text mode the report is redrawn in place, so the terminal shows one board whose numbers settle over time. It is the sandbox screen without the prompt.
 
-With `--json`, the output is [JSON Lines](https://jsonlines.org/): every refresh writes one complete report object on its own line, in the same shape as above plus a `simulations` count. A consumer reads the stream line by line and keeps the most recent object; there is nothing to reassemble. When the cap is reached, the last line is the final report and the process exits with status 0. On Ctrl-C the stream simply ends.
+With `--json`, the output is [JSON Lines](https://jsonlines.org/): every refresh writes one complete report object on its own line, in the same shape as above plus a `simulations` count. A consumer reads the stream line by line and keeps the most recent object; there is nothing to reassemble. When the cap is reached, the last line is the final report and the process exits with status 0. On Ctrl-C the stream simply ends, with the conventional status 130.
 
 ```
 $ ox-zero analyze 5,5 6,6 5,6 --live --json

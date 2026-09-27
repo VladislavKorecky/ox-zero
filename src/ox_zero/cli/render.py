@@ -141,7 +141,8 @@ def eval_bar(value: float, side: Mark) -> Text:
     filled = "█" * full + (_EIGHTHS[part] if part else "")
     empty = "░" * (EVAL_BAR_WIDTH - len(filled))
 
-    text = Text("Eval ", style="bold")
+    text = Text()
+    text.append("Eval ", "bold")
     text.append(filled, Style(color=heat_color(value, bright=True)))
     text.append(empty, _LABEL)
     text.append(f" {percent(value)}%", Style(bold=True))
@@ -154,7 +155,8 @@ def top_list(analysis: Analysis, n: int) -> Text:
     """The ranked candidate moves: `  1. 5,7   47%`."""
     ranked = analysis.top(n)
     rank_width = len(str(len(ranked)))
-    text = Text(f"Top {n}", style="bold")
+    text = Text()
+    text.append(f"Top {n}", "bold")
     for rank, (cell, score) in enumerate(ranked, start=1):
         text.append(f"\n  {rank:>{rank_width}}. ")
         # 5 characters fit the widest cell on a 12x12 board, `10,11`.
@@ -177,7 +179,8 @@ def status_line(state: State, right: Text | str | None = None) -> Text:
 
 def game_over(state: State) -> Text:
     """`Game over: O wins (X O X at 5,5 5,6 5,7)` or `Game over: draw (board full)`."""
-    text = Text("Game over: ", style="bold")
+    text = Text()
+    text.append("Game over: ", "bold")
     if is_draw(state):
         text.append("draw (board full)")
         return text
