@@ -9,26 +9,30 @@ src/ox_zero/
   game/          rules, notation                       (done)
   engine/
     encoding.py  State -> input planes; symmetries (transform planes and policies)
-    network.py   the residual tower, heads, NetworkConfig
-    evaluator.py the Evaluator protocol and its implementations (network, uniform, ...)
+    network.py   the residual tower, heads, NetworkConfig; alphazero_loss
+    evaluator.py the Evaluator protocol; UniformEvaluator, TableEvaluator (torch-free)
+    network_evaluator.py  NetworkEvaluator, select_device (the only torch on the search path)
     mcts.py      Node, PUCT selection, expansion, backup, tree reuse
-    search.py    the search loop as a generator; SearchConfig; analysis entry point
+    search.py    SearchConfig; SearchTree (two-phase select / expand-and-backup); analyse (snapshot generator)
   training/
     selfplay.py  lockstep self-play of many games; SelfPlayConfig
     replay.py    the replay buffer
-    trainer.py   the loss, the optimiser, one training step; TrainConfig
+    trainer.py   the optimiser, one training step; TrainConfig
     evaluate.py  checkpoint tournaments and Elo
     checkpoint.py save / load of weights + configs + optimiser + RNG state
     run.py       the generation loop, logging, resume
   cli/
     adapter.py   wraps engine.search into the CLI's Engine port (see cli-integration.md)
 scripts/
+  bench_search.py  simulations per second for a board size, evaluator and device
   train.py       entry point that builds configs and calls training.run
   plot.py        curves from metrics files (until a dashboard exists)
 checkpoints/     run outputs, gitignored
 ```
 
 One module per concept. `engine` never imports `training` or `cli`; `training` never imports `cli`.
+
+Two changes from the original layout, made in [plan 02](../plans/02-engine-search-network.md) (scope approved 2026-09-27): the loss lives in `engine/network.py` rather than `training/trainer.py`, because the network's main test ("memorise one batch") needs it; and `NetworkEvaluator` has its own module, because `import torch` costs about half a second and the search, which imports `evaluator.py`, must stay torch-free.
 
 ## The evaluator seam
 

@@ -13,7 +13,7 @@ The tree is a plain tree of positions. Each node holds its `State` and, for ever
 | `Q(s,a) = W / N` | Mean value, from the perspective of the player who plays `a` at `s`. `0` when `N = 0`. |
 | `P(s,a)` | Prior probability from the network's policy head, after masking illegal moves and renormalising. |
 
-`N(s) = Σ_a N(s,a)` is the parent's visit count.
+`N(s) = Σ_a N(s,a)` is the parent's visit count. In code it is the parent node's own visit count, incremented on every node of a backed-up path as in the paper's pseudocode: exactly `Σ_a N(s,a)` at the root (expanding the root is setup and adds no visit), and one more at an expanded inner node, the visit that expanded it (decided in [plan 02](../plans/02-engine-search-network.md#decisions-made-in-this-plan)).
 
 **Decided:** a plain tree, no transposition sharing. Two move orders reaching the same position get two nodes. This wastes some evaluations but keeps the visit-count maths exactly as in the paper. Deferred: [evaluation cache, transposition DAG](upgrades.md#search).
 
