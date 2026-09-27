@@ -325,13 +325,19 @@ def _reference_lines(state: State) -> set:
     return found
 
 
+FUZZ_SEED = 20260927
+
+
 @pytest.mark.parametrize("size", [3, 4, 6, 12])
 def test_random_games_agree_with_brute_force_scan(size):
     # Play random games. After every move, the incremental win check (only
     # lines through the new cell) must agree with a full-board scan: the game
     # continues while the board has no alternating line, and ends exactly
     # when the first ones appear.
-    rng = random.Random(size)
+    # A private generator with a fixed seed: the "random" games are the same
+    # on every run, so any failure is reproducible. It also leaves the global
+    # `random` state alone.
+    rng = random.Random(FUZZ_SEED)
     for _ in range(100):
         state = initial_state(size)
         while not is_terminal(state):
