@@ -32,7 +32,7 @@ These are code-level and belong in the implementation plan: whether training exa
 
 ## Results (2026-09-27)
 
-Measured by [plan 01](../plans/01-game-experiments.md) with `scripts/experiments/random_play.py` (seed 0) and `scripts/experiments/solve_boards.py`. Raw numbers are in `scripts/experiments/results/`: `*.json` regenerates byte-for-byte, and `*.timing.json` holds the machine-dependent wall-clock numbers. All runs are pure Python 3.14, single-threaded, on an 8 GB Apple Silicon laptop.
+Measured by [plan 01](../plans/archive/01-game-experiments.md) with `scripts/experiments/random_play.py` (seed 0) and `scripts/experiments/solve_boards.py`. Raw numbers are in `scripts/experiments/results/`: `*.json` regenerates byte-for-byte, and `*.timing.json` holds the machine-dependent wall-clock numbers. All runs are pure Python 3.14, single-threaded, on an 8 GB Apple Silicon laptop.
 
 Average legal moves are pooled over every decision in every game. At a non-terminal position every empty cell is legal, so a decision's legal-move count is `S²` minus the move number, and the average is fixed by how long games last. The first and last quarters are the decisions with index `i < L/4` and `i ≥ 3L/4` in a game of length `L`.
 

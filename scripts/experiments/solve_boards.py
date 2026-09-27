@@ -1,6 +1,6 @@
 """Solve the empty board exactly for small sizes.
 
-Plan 01 (docs/plans/01-game-experiments.md), step 4. For each size, runs the
+Plan 01 (docs/plans/archive/01-game-experiments.md), step 4. For each size, runs the
 exact negamax solver (`ox_zero.game.Solver`) on the empty board and reports:
 
 - the game value, as "X wins" / "draw" / "O wins" (X moves first, so the
