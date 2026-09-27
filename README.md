@@ -184,7 +184,7 @@ The screen shows, top to bottom:
 - **Status line.** Side to move, mark count, and the engine state: `analysing` with the number of simulations so far, or `paused`.
 - **Board.** The same board as `analyze`, with a score in every empty cell. While analysis is paused, empty cells show `.` instead of a score.
 - **Eval and top N candidates.** As in `analyze`.
-- **Move history.** The moves played so far, in order.
+- **Move history.** The moves played so far, in order, numbered in X-and-O pairs as in chess notation.
 - **Message line.** Feedback for the last command: errors, the output of `export`, or nothing.
 - **Prompt.** Where you type commands.
 
@@ -202,7 +202,7 @@ Top 3
   2. 4,6   38%
   3. 6,5   36%
 
-Moves: 5,5 6,6 5,6
+Moves: 1. 5,5 6,6  2. 5,6
 
 
 >
@@ -220,7 +220,8 @@ Commands available inside the sandbox:
 | `load <position>` | Jump to a position, given as a move list or board string. |
 | `reset` | Clear to an empty board. |
 | `export` | Show the current position as a board string in the message line, ready to paste into `analyze`. |
-| `quit` | Leave the sandbox. |
+| `help` | List the commands in the message line. |
+| `quit` | Leave the sandbox. `exit` works too. |
 
 A position loaded as a board string has no move history. It becomes the starting point: `undo` stops there, and the move history lists only the moves played after it.
 
