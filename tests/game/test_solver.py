@@ -183,3 +183,23 @@ def test_4x4_solves():
     # No timing assertion: this guards against the search blowing up so badly
     # that the test suite stops finishing at all.
     assert Solver().value(initial_state(4)) in (-1, 0, 1)
+
+
+# --- Measured values (regression) -------------------------------------------
+# Measured by scripts/experiments/solve_boards.py and recorded in
+# docs/design/open-questions.md, "Results". If one of these changes, the rules
+# of the game have changed.
+
+
+def test_empty_3x3_value():
+    # A draw with perfect play. Every first move holds the draw except the
+    # centre, which loses for X.
+    solver = Solver()
+    assert solver.value(initial_state(3)) == 0
+    assert (1, 1) not in solver.best_moves(initial_state(3))
+    assert len(solver.best_moves(initial_state(3))) == 8
+
+
+def test_empty_4x4_value():
+    # A win for the second player: X (to move) loses whatever it plays first.
+    assert Solver().value(initial_state(4)) == -1
