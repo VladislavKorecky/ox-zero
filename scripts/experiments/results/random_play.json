@@ -1,0 +1,298 @@
+{
+  "parameters": {
+    "sizes": [
+      3,
+      4,
+      5,
+      6,
+      8,
+      12
+    ],
+    "games": 2000,
+    "greedy_games_large": 500,
+    "large_size": 10,
+    "seed": 0,
+    "policies": {
+      "random": "uniformly random legal move",
+      "greedy": "one-ply lookahead: take a win, avoid giving one, else random"
+    }
+  },
+  "results": [
+    {
+      "size": 3,
+      "policy": "random",
+      "games": 2000,
+      "length": {
+        "mean": 6.5,
+        "median": 6.0,
+        "min": 3,
+        "max": 9,
+        "p10": 4.0,
+        "p90": 9.0
+      },
+      "outcomes": {
+        "x_wins": 0.4315,
+        "o_wins": 0.504,
+        "draws": 0.0645
+      },
+      "avg_legal_moves": {
+        "overall": 6.0422,
+        "first_quarter": 8.4302,
+        "last_quarter": 3.1886
+      }
+    },
+    {
+      "size": 4,
+      "policy": "random",
+      "games": 2000,
+      "length": {
+        "mean": 8.6885,
+        "median": 9.0,
+        "min": 3,
+        "max": 16,
+        "p10": 5.0,
+        "p90": 12.0
+      },
+      "outcomes": {
+        "x_wins": 0.4545,
+        "o_wins": 0.5445,
+        "draws": 0.001
+      },
+      "avg_legal_moves": {
+        "overall": 11.7596,
+        "first_quarter": 15.1308,
+        "last_quarter": 7.9121
+      }
+    },
+    {
+      "size": 5,
+      "policy": "random",
+      "games": 2000,
+      "length": {
+        "mean": 10.8835,
+        "median": 11.0,
+        "min": 3,
+        "max": 24,
+        "p10": 6.0,
+        "p90": 15.0
+      },
+      "outcomes": {
+        "x_wins": 0.4925,
+        "o_wins": 0.5075,
+        "draws": 0.0
+      },
+      "avg_legal_moves": {
+        "overall": 19.4688,
+        "first_quarter": 23.8101,
+        "last_quarter": 14.6009
+      }
+    },
+    {
+      "size": 6,
+      "policy": "random",
+      "games": 2000,
+      "length": {
+        "mean": 12.7365,
+        "median": 13.0,
+        "min": 3,
+        "max": 28,
+        "p10": 7.0,
+        "p90": 19.0
+      },
+      "outcomes": {
+        "x_wins": 0.4985,
+        "o_wins": 0.5015,
+        "draws": 0.0
+      },
+      "avg_legal_moves": {
+        "overall": 29.3892,
+        "first_quarter": 34.5428,
+        "last_quarter": 23.7093
+      }
+    },
+    {
+      "size": 8,
+      "policy": "random",
+      "games": 2000,
+      "length": {
+        "mean": 17.6475,
+        "median": 17.0,
+        "min": 3,
+        "max": 40,
+        "p10": 10.0,
+        "p90": 25.0
+      },
+      "outcomes": {
+        "x_wins": 0.4695,
+        "o_wins": 0.5305,
+        "draws": 0.0
+      },
+      "avg_legal_moves": {
+        "overall": 54.6649,
+        "first_quarter": 61.8701,
+        "last_quarter": 46.937
+      }
+    },
+    {
+      "size": 12,
+      "policy": "random",
+      "games": 2000,
+      "length": {
+        "mean": 28.553,
+        "median": 28.0,
+        "min": 4,
+        "max": 60,
+        "p10": 15.0,
+        "p90": 42.0
+      },
+      "outcomes": {
+        "x_wins": 0.481,
+        "o_wins": 0.519,
+        "draws": 0.0
+      },
+      "avg_legal_moves": {
+        "overall": 128.4522,
+        "first_quarter": 140.3198,
+        "last_quarter": 116.0648
+      }
+    },
+    {
+      "size": 3,
+      "policy": "greedy",
+      "games": 2000,
+      "length": {
+        "mean": 8.5995,
+        "median": 9.0,
+        "min": 6,
+        "max": 9,
+        "p10": 6.0,
+        "p90": 9.0
+      },
+      "outcomes": {
+        "x_wins": 0.03,
+        "o_wins": 0.1235,
+        "draws": 0.8465
+      },
+      "avg_legal_moves": {
+        "overall": 5.145,
+        "first_quarter": 8.0539,
+        "last_quarter": 1.686
+      }
+    },
+    {
+      "size": 4,
+      "policy": "greedy",
+      "games": 2000,
+      "length": {
+        "mean": 10.229,
+        "median": 10.0,
+        "min": 5,
+        "max": 16,
+        "p10": 6.0,
+        "p90": 14.0
+      },
+      "outcomes": {
+        "x_wins": 0.31,
+        "o_wins": 0.6605,
+        "draws": 0.0295
+      },
+      "avg_legal_moves": {
+        "overall": 11.0102,
+        "first_quarter": 14.9629,
+        "last_quarter": 6.619
+      }
+    },
+    {
+      "size": 5,
+      "policy": "greedy",
+      "games": 2000,
+      "length": {
+        "mean": 11.6845,
+        "median": 11.0,
+        "min": 5,
+        "max": 24,
+        "p10": 7.0,
+        "p90": 18.0
+      },
+      "outcomes": {
+        "x_wins": 0.4375,
+        "o_wins": 0.5625,
+        "draws": 0.0
+      },
+      "avg_legal_moves": {
+        "overall": 18.9593,
+        "first_quarter": 23.695,
+        "last_quarter": 13.7132
+      }
+    },
+    {
+      "size": 6,
+      "policy": "greedy",
+      "games": 2000,
+      "length": {
+        "mean": 13.361,
+        "median": 13.0,
+        "min": 5,
+        "max": 33,
+        "p10": 8.0,
+        "p90": 19.0
+      },
+      "outcomes": {
+        "x_wins": 0.443,
+        "o_wins": 0.557,
+        "draws": 0.0
+      },
+      "avg_legal_moves": {
+        "overall": 29.0655,
+        "first_quarter": 34.4594,
+        "last_quarter": 23.1573
+      }
+    },
+    {
+      "size": 8,
+      "policy": "greedy",
+      "games": 2000,
+      "length": {
+        "mean": 17.2515,
+        "median": 17.0,
+        "min": 5,
+        "max": 46,
+        "p10": 11.0,
+        "p90": 25.0
+      },
+      "outcomes": {
+        "x_wins": 0.4565,
+        "o_wins": 0.5435,
+        "draws": 0.0
+      },
+      "avg_legal_moves": {
+        "overall": 54.9752,
+        "first_quarter": 61.9437,
+        "last_quarter": 47.5164
+      }
+    },
+    {
+      "size": 12,
+      "policy": "greedy",
+      "games": 500,
+      "length": {
+        "mean": 26.982,
+        "median": 27.0,
+        "min": 7,
+        "max": 50,
+        "p10": 17.0,
+        "p90": 37.0
+      },
+      "outcomes": {
+        "x_wins": 0.498,
+        "o_wins": 0.502,
+        "draws": 0.0
+      },
+      "avg_legal_moves": {
+        "overall": 129.8149,
+        "first_quarter": 140.6563,
+        "last_quarter": 118.4794
+      }
+    }
+  ]
+}

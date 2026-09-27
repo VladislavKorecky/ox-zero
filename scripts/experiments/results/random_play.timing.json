@@ -1,0 +1,118 @@
+{
+  "parameters": {
+    "sizes": [
+      3,
+      4,
+      5,
+      6,
+      8,
+      12
+    ],
+    "games": 2000,
+    "greedy_games_large": 500,
+    "large_size": 10,
+    "seed": 0,
+    "policies": {
+      "random": "uniformly random legal move",
+      "greedy": "one-ply lookahead: take a win, avoid giving one, else random"
+    }
+  },
+  "timing": [
+    {
+      "size": 3,
+      "policy": "random",
+      "games": 2000,
+      "seconds": 0.06,
+      "positions_generated": 13000,
+      "positions_per_second": 231936
+    },
+    {
+      "size": 4,
+      "policy": "random",
+      "games": 2000,
+      "seconds": 0.09,
+      "positions_generated": 17377,
+      "positions_per_second": 186086
+    },
+    {
+      "size": 5,
+      "policy": "random",
+      "games": 2000,
+      "seconds": 0.14,
+      "positions_generated": 21767,
+      "positions_per_second": 157102
+    },
+    {
+      "size": 6,
+      "policy": "random",
+      "games": 2000,
+      "seconds": 0.19,
+      "positions_generated": 25473,
+      "positions_per_second": 136399
+    },
+    {
+      "size": 8,
+      "policy": "random",
+      "games": 2000,
+      "seconds": 0.34,
+      "positions_generated": 35295,
+      "positions_per_second": 104397
+    },
+    {
+      "size": 12,
+      "policy": "random",
+      "games": 2000,
+      "seconds": 0.87,
+      "positions_generated": 57106,
+      "positions_per_second": 65391
+    },
+    {
+      "size": 3,
+      "policy": "greedy",
+      "games": 2000,
+      "seconds": 1.61,
+      "positions_generated": 498818,
+      "positions_per_second": 308968
+    },
+    {
+      "size": 4,
+      "policy": "greedy",
+      "games": 2000,
+      "seconds": 5.71,
+      "positions_generated": 1448538,
+      "positions_per_second": 253855
+    },
+    {
+      "size": 5,
+      "policy": "greedy",
+      "games": 2000,
+      "seconds": 14.21,
+      "positions_generated": 3206450,
+      "positions_per_second": 225692
+    },
+    {
+      "size": 6,
+      "policy": "greedy",
+      "games": 2000,
+      "seconds": 29.39,
+      "positions_generated": 6160953,
+      "positions_per_second": 209624
+    },
+    {
+      "size": 8,
+      "policy": "greedy",
+      "games": 2000,
+      "seconds": 91.36,
+      "positions_generated": 17329904,
+      "positions_per_second": 189690
+    },
+    {
+      "size": 12,
+      "policy": "greedy",
+      "games": 500,
+      "seconds": 110.44,
+      "positions_generated": 18836486,
+      "positions_per_second": 170558
+    }
+  ]
+}
