@@ -40,6 +40,15 @@ Speed of the engine's search, not a measurement of the game: simulations per sec
 uv run python scripts/bench_search.py --size 12 --device mps   # defaults: 6x6, 800 simulations, 4x64 network, 3 repeats
 ```
 
+## make_checkpoint.py
+
+Writes a checkpoint with random (seeded) weights in the real format. Its weights are random and exist so that `--model` can be exercised before training. The default output, `checkpoints_random/gen_000.pt`, is deliberately outside `checkpoints/`: the CLI loads the newest checkpoint there automatically, and a random network would replace the no-model search on every run. See [plan 03](../docs/plans/03-cli-adapter.md), step 5.
+
+```bash
+uv run python scripts/make_checkpoint.py      # defaults: 12x12, 4x64 network, seed 0
+uv run ox-zero analyze 5,5 6,6 5,6 --model checkpoints_random/gen_000.pt
+```
+
 ## Later
 
-Launching training, evaluating checkpoints, and similar runners will live here once the training pipeline exists.
+Launching training, evaluating checkpoints against each other, and similar runners will live here once the training pipeline exists.
