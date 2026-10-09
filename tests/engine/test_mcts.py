@@ -31,6 +31,7 @@ from ox_zero.engine.mcts import (
     terminal_value,
     visit_distribution,
 )
+from ox_zero.engine.evaluator import UniformEvaluator
 from ox_zero.game import apply_move, initial_state, is_terminal, play
 
 C_BASE = 19652.0
@@ -221,6 +222,61 @@ def test_expanding_a_terminal_node_raises():
     node = Node(play([(0, 0), (0, 1), (0, 2)], size=3), prior=1.0)
     with pytest.raises(ValueError):
         expand(node, np.full(9, 1 / 9, dtype=np.float32))
+
+
+# --- Lazy child states --------------------------------------------------------------
+# An expansion creates a child per legal move (141 on a fresh 12x12 opening),
+# but a simulation visits only one of them. Each `State` holds a full board,
+# so building them all up front made boards ~88% of the tree's memory. A
+# child builds its board on first access instead.
+
+
+def uniform(state) -> np.ndarray:
+    return UniformEvaluator().evaluate([state])[0][0]
+
+
+def test_expansion_builds_no_child_boards(monkeypatch):
+    from ox_zero.engine import mcts
+
+    calls = []
+    real_apply_move = mcts.apply_move
+    monkeypatch.setattr(mcts, "apply_move", lambda s, m: calls.append(m) or real_apply_move(s, m))
+
+    node = Node(play([(5, 5)]), prior=1.0)
+    expand(node, uniform(node.state))
+    assert calls == []
+
+    child = node.children[(0, 0)]
+    first = child.state
+    assert calls == [(0, 0)]
+    assert child.state is first  # cached: built once
+    assert calls == [(0, 0)]
+
+
+def test_a_lazy_child_state_is_the_parent_plus_its_move():
+    node = Node(play([(1, 1)], size=3), prior=1.0)
+    expand(node, uniform(node.state))
+    for move, child in node.children.items():
+        assert child.state == apply_move(node.state, move)
+
+
+def test_an_expansion_costs_far_less_than_its_child_boards():
+    # Measured before the change: about 203 KB for 141 children, 178 KB of
+    # which were the boards. The bound leaves room for the nodes themselves.
+    import tracemalloc
+
+    state = play([(5, 5), (6, 6), (5, 6)])
+    policy = uniform(state)
+    nodes = [Node(state, prior=1.0) for _ in range(20)]
+    tracemalloc.start()
+    try:
+        before = tracemalloc.get_traced_memory()[0]
+        for node in nodes:
+            expand(node, policy)
+        per_expansion = (tracemalloc.get_traced_memory()[0] - before) / len(nodes)
+    finally:
+        tracemalloc.stop()
+    assert per_expansion < 50 * 1024
 
 
 # --- Root value -------------------------------------------------------------------
