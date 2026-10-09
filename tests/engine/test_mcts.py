@@ -12,10 +12,13 @@ Formulas under test (docs/design/search.md):
 """
 
 import math
+import tracemalloc
 
 import numpy as np
 import pytest
 
+from ox_zero.engine import mcts
+from ox_zero.engine.evaluator import UniformEvaluator
 from ox_zero.engine.mcts import (
     Node,
     add_dirichlet_noise,
@@ -221,6 +224,77 @@ def test_expanding_a_terminal_node_raises():
     node = Node(play([(0, 0), (0, 1), (0, 2)], size=3), prior=1.0)
     with pytest.raises(ValueError):
         expand(node, np.full(9, 1 / 9, dtype=np.float32))
+
+
+# --- Lazy child states --------------------------------------------------------------
+# An expansion creates a child per legal move (141 on a fresh 12x12 opening),
+# but a simulation visits only one of them. Each `State` holds a full board,
+# so building them all up front made boards ~88% of the tree's memory. A
+# child builds its board on first access instead.
+
+
+def uniform(state) -> np.ndarray:
+    # The production path: a legal-only policy, as evaluators produce.
+    return UniformEvaluator().evaluate([state])[0][0]
+
+
+def test_expansion_builds_no_child_boards(monkeypatch):
+    calls = []
+    real_apply_move = mcts.apply_move
+    monkeypatch.setattr(mcts, "apply_move", lambda s, m: calls.append(m) or real_apply_move(s, m))
+
+    node = Node(play([(5, 5)]), prior=1.0)
+    expand(node, uniform(node.state))
+    assert calls == []
+
+    child = node.children[(0, 0)]
+    first = child.state
+    assert calls == [(0, 0)]
+    assert child.state is first  # cached: built once
+    assert calls == [(0, 0)]
+
+
+def test_a_lazy_child_state_is_the_parent_plus_its_move():
+    node = Node(play([(1, 1)], size=3), prior=1.0)
+    expand(node, uniform(node.state))
+    for move, child in node.children.items():
+        assert child.state == apply_move(node.state, move)
+
+
+EMPTY_3X3 = initial_state(3)
+
+
+@pytest.mark.parametrize(
+    "state, kwargs",
+    [
+        pytest.param(None, {}, id="nothing"),
+        pytest.param(None, {"parent_state": EMPTY_3X3}, id="parent without move"),
+        pytest.param(None, {"move": (0, 0)}, id="move without parent"),
+        pytest.param(EMPTY_3X3, {"parent_state": EMPTY_3X3, "move": (0, 0)}, id="state and both"),
+        pytest.param(EMPTY_3X3, {"parent_state": EMPTY_3X3}, id="state and parent"),
+        pytest.param(EMPTY_3X3, {"move": (0, 0)}, id="state and move"),
+    ],
+)
+def test_a_node_takes_a_state_or_a_parent_state_and_move(state, kwargs):
+    with pytest.raises(TypeError):
+        Node(state, prior=1.0, **kwargs)
+
+
+def test_an_expansion_costs_far_less_than_its_child_boards():
+    # Measured before the change: about 203 KB for 141 children, 178 KB of
+    # which were the boards. The bound leaves room for the nodes themselves.
+    state = play([(5, 5), (6, 6), (5, 6)])
+    policy = uniform(state)
+    nodes = [Node(state, prior=1.0) for _ in range(20)]
+    tracemalloc.start()
+    try:
+        before = tracemalloc.get_traced_memory()[0]
+        for node in nodes:
+            expand(node, policy)
+        per_expansion = (tracemalloc.get_traced_memory()[0] - before) / len(nodes)
+    finally:
+        tracemalloc.stop()
+    assert per_expansion < 50 * 1024
 
 
 # --- Root value -------------------------------------------------------------------

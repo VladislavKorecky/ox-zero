@@ -49,27 +49,92 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass
 
 import numpy as np
 
 from ox_zero.game.rules import Cell, State, apply_move, is_terminal, legal_moves
 
 
-@dataclass(slots=True)
 class Node:
     """One position in the search tree, plus the statistics of the edge into it.
 
     `children` is `None` until the node is expanded; terminal nodes are never
     expanded and keep `None`. Once expanded it maps every legal move, in board
     order, to its child.
+
+    Lazy state: an expansion creates a child for every legal move (141 on an
+    early 12x12 board), but a simulation then visits only one of them, and
+    most children are never visited at all. A `State` holds a full copy of the
+    board, so building every child's state up front made boards about 88% of
+    the tree's memory. A child made by `expand` therefore stores only a
+    reference to its parent's (shared, not copied) state and its own move, and
+    builds its state the first time `state` is read, then caches it.
+
+    The parent reference is kept after that, deliberately: the parent node
+    holds the same `State` object anyway, so it costs nothing extra (after
+    `reuse_subtree`, at most one old board stays alive), and never clearing it
+    means two threads reading `state` at once cannot see a half-updated node.
+
+    Nodes compare by identity, as tree nodes should: two nodes with equal
+    statistics are still different places in the tree.
+
+    `__slots__` instead of a per-instance `__dict__`: a few hundred bytes
+    saved per node, which matters at hundreds of thousands of nodes.
     """
 
-    state: State
-    prior: float  # P(s,a) of the edge into this node
-    visit_count: int = 0  # N(s,a)
-    value_sum: float = 0.0  # W(s,a), for the player who played a
-    children: dict[Cell, Node] | None = None
+    __slots__ = ("_state", "_parent_state", "_move", "prior", "visit_count", "value_sum", "children")
+
+    def __init__(
+        self,
+        state: State | None,
+        prior: float,
+        visit_count: int = 0,
+        value_sum: float = 0.0,
+        children: dict[Cell, Node] | None = None,
+        *,
+        parent_state: State | None = None,
+        move: Cell | None = None,
+    ) -> None:
+        # Exactly one way to know the position: a state, or a parent state
+        # plus the move from it.
+        if state is not None:
+            if parent_state is not None or move is not None:
+                raise TypeError("a Node takes either a state, or a parent_state and a move")
+        elif parent_state is None or move is None:
+            raise TypeError("a lazy Node needs both a parent_state and a move")
+        self._state = state
+        self._parent_state = parent_state
+        self._move = move
+        self.prior = prior  # P(s,a) of the edge into this node
+        self.visit_count = visit_count  # N(s,a)
+        self.value_sum = value_sum  # W(s,a), for the player who played a
+        self.children = children
+
+    @classmethod
+    def lazy(cls, parent_state: State, move: Cell, prior: float) -> Node:
+        """A child whose state, `apply_move(parent_state, move)`, is built on first use."""
+        return cls(None, prior, parent_state=parent_state, move=move)
+
+    @property
+    def state(self) -> State:
+        """The position this node represents (built and cached on first read)."""
+        if self._state is None:
+            # A lazy node always has both (enforced in __init__), and neither
+            # is ever cleared, so two threads racing here both succeed. They
+            # may build two equal-but-distinct State objects; the last
+            # assignment wins. Nothing relies on identity across threads.
+            self._state = apply_move(self._parent_state, self._move)  # type: ignore[arg-type]
+        return self._state
+
+    def __repr__(self) -> str:
+        # `move` records how the node was made (None: from a full state), not
+        # its place in the tree: a child promoted to root by `reuse_subtree`
+        # keeps its move, and may still be lazy.
+        built = "built" if self._state is not None else "lazy"
+        return (
+            f"Node(move={self._move}, state {built}, prior={self.prior:.4g},"
+            f" N={self.visit_count}, W={self.value_sum:.4g}, expanded={self.expanded})"
+        )
 
     @property
     def q(self) -> float:
@@ -175,7 +240,7 @@ def expand(node: Node, policy: np.ndarray) -> None:
     if not total > 0.0:
         raise ValueError("policy puts no mass on any legal move")
     node.children = {
-        move: Node(apply_move(node.state, move), prior=weight / total)
+        move: Node.lazy(node.state, move, prior=weight / total)
         for move, weight in zip(moves, weights)
     }
 

@@ -49,6 +49,7 @@ Columns: what the change is, what it is expected to buy, where the idea comes fr
 | **Tensorised rules**: batched board tensors, win detection by convolution | Removes Python from move application in self-play. Needs cross-check tests against `ox_zero.game`. | pgx-style environments | When profiling shows `apply_move` dominates |
 | **`torch.compile`** / fused inference | Lower per-batch latency. | PyTorch | When the network is the bottleneck |
 | **YAML/TOML experiment files** | Sweeps without editing code. | Tooling | If we start running many configurations |
+| **Sandbox search budget**: stop open-ended analysis at a simulation or memory cap, and show "done" in the status line | Bounded memory. The sandbox searches until the position changes, and the tree only grows: with lazy child states an empty-board search grows by about 175 MB/s with uniform priors (2026-10-09, [PR #16](https://github.com/VladislavKorecky/ox-zero/pull/16)), so leaving the sandbox open can exhaust an 8 GB machine within a minute. Needs a `docs/cli.md` change; a cap near 50k simulations is about 1.5 GB at 29 KB per expansion. | Design discussion | Before the sandbox is used for long sessions; the array-based tree shrinks each simulation but does not bound the total |
 
 ## Not yet discussed
 
