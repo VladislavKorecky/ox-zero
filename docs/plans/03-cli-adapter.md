@@ -170,9 +170,9 @@ Implementation: `load_engine` as in Interfaces; `_load` in `app.py` prints the r
 
 ## Step 5: `scripts/make_checkpoint.py`
 
-Not test-driven. Arguments: `--size 6`, `--blocks 4`, `--filters 64`, `--value-hidden 256`, `--seed 0`, `--out checkpoints/random/gen_000.pt`. Seeds torch, builds the network, saves with `generation=0` and `configs={"search": ANALYSIS}`, prints the path. One usage line in `scripts/README.md` under a new "make_checkpoint.py" section, with the sentence that its weights are random and exist so that `--model` can be exercised before training.
+Not test-driven. Arguments: `--size 12`, `--blocks 4`, `--filters 64`, `--value-hidden 256`, `--seed 0`, `--out checkpoints_random/gen_000.pt`. (Changed during implementation from `--size 6` and `checkpoints/random/`: a file under `checkpoints/` is auto-loaded by every CLI run, and a 6x6 one would make every 12x12 command fail with the size error.) Seeds torch, builds the network, saves with `generation=0` and `configs={"search": ANALYSIS}`, prints the path. One usage line in `scripts/README.md` under a new "make_checkpoint.py" section, with the sentence that its weights are random and exist so that `--model` can be exercised before training.
 
-Run it once, then `uv run ox-zero analyze 5,5 6,6 5,6 --model checkpoints/random/gen_000.pt --simulations 100` and the same without `--model` (uniform). Put both outputs in the PR description; the scores are meaningless but the plumbing is visible.
+Run it once, then `uv run ox-zero analyze 5,5 6,6 5,6 --model checkpoints_random/gen_000.pt --simulations 100` and the same without `--model` (uniform). Put both outputs in the PR description; the scores are meaningless but the plumbing is visible.
 
 ## Step 6: wire the sandbox, check by hand
 
@@ -193,7 +193,7 @@ No code expected: the sandbox takes any `Engine`. Run `uv run ox-zero sandbox` w
 
 - `uv run pytest` is green, including every pre-existing CLI test, and the new tests run on CPU in a few seconds.
 - `uv run ox-zero best 0,0 0,1` prints `0,2` (the win in one) with no model present. That plus the small-board adapter tests in step 2 is the tactical evidence; 12x12 has no exact fixture.
-- `uv run ox-zero analyze ... --model checkpoints/random/gen_000.pt` loads a checkpoint written by `scripts/make_checkpoint.py` and runs; the same command with a wrong-size position fails with the size message.
+- `uv run ox-zero analyze ... --model checkpoints_random/gen_000.pt` loads a checkpoint written by `scripts/make_checkpoint.py` and runs; the same command with a wrong-size position fails with the size message.
 - `src/ox_zero/training/README.md` is gone; `ox_zero.engine` is untouched (`git diff main -- src/ox_zero/engine` is empty).
 - Both `/code-review` runs happened and their findings were addressed or explicitly deferred in the PR description.
 - A pull request from `feat/cli-adapter` to `main` with the two manual outputs from step 5. On merge, this plan moves to `docs/plans/archive/`.

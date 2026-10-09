@@ -9,12 +9,20 @@ import json
 import math
 
 import pytest
+import torch
 from typer.testing import CliRunner
 
+from ox_zero.cli import adapter as adapter_module
 from ox_zero.cli import app as app_module
+from ox_zero.cli.adapter import SearchEngine, load_engine
 from ox_zero.cli.app import app
 from ox_zero.cli.placeholder import PlaceholderEngine
+from ox_zero.engine import network_evaluator
+from ox_zero.engine.evaluator import UniformEvaluator
+from ox_zero.engine.network import Network, NetworkConfig
+from ox_zero.engine.network_evaluator import NetworkEvaluator
 from ox_zero.game import play, to_board_string
+from ox_zero.training.checkpoint import save_checkpoint
 
 runner = CliRunner()
 
@@ -23,15 +31,23 @@ FINISHED = ["5,5", "6,6", "5,7", "5,6"]
 
 
 @pytest.fixture(autouse=True)
-def fast_engine(monkeypatch):
-    """Swap in a placeholder engine without the fake throughput limit, so tests don't sleep."""
-    calls = []
+def fast_engine(request, monkeypatch):
+    """Swap in a placeholder engine without the fake throughput limit, so tests don't sleep.
 
-    def load(model, seed):
+    The CLI tests are about output, not about which engine gets loaded, so
+    they run on the fast, deterministic placeholder. Tests marked
+    `real_engine` opt out and exercise the real loader.
+    """
+    calls = []
+    if request.node.get_closest_marker("real_engine"):
+        return calls
+
+    def load(model, seed, device="cpu"):
         calls.append((model, seed))
         if model is not None and not model.exists():
             raise FileNotFoundError(f"model checkpoint not found: {model}")
-        return PlaceholderEngine(seed=0 if seed is None else seed, rate=math.inf)
+        engine = PlaceholderEngine(seed=0 if seed is None else seed, rate=math.inf)
+        return engine, "Using a test placeholder engine."
 
     monkeypatch.setattr(app_module, "load_engine", load)
     return calls
@@ -108,7 +124,7 @@ def test_analyze_finished_game_json():
     assert report["result"] == "O"
 
 
-def test_placeholder_engine_notice_goes_to_stderr():
+def test_engine_notice_goes_to_stderr():
     result = run("analyze", *POSITION, "--json")
     assert "placeholder" in result.stderr.lower()
     json.loads(result.stdout)  # stdout stays clean JSON
@@ -223,3 +239,160 @@ def test_sandbox_rejects_an_invalid_position(launched):
 def test_sandbox_rejects_flags_that_do_not_apply(launched, flag):
     args = [flag, "5"] if flag == "--simulations" else [flag]
     assert run("sandbox", *args).exit_code == 2
+
+
+# --- Loading the real engine ---------------------------------------------------
+# These tests opt out of the placeholder fixture. They run with the working
+# directory in `tmp_path`, so the default `checkpoints/` root is empty unless
+# a test writes into it.
+
+TINY = NetworkConfig(blocks=1, filters=4, value_hidden=8)
+
+
+def write_checkpoint(path, size=12, generation=0, seed=0):
+    torch.manual_seed(seed)
+    save_checkpoint(path, Network(size, TINY), generation=generation)
+    return path
+
+
+@pytest.fixture
+def workdir(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+@pytest.mark.real_engine
+def test_no_model_searches_with_uniform_priors(workdir):
+    engine, notice = load_engine(None, None, root=workdir / "none")
+    assert isinstance(engine, SearchEngine)
+    assert isinstance(engine.evaluator, UniformEvaluator)
+    assert "uniform priors" in notice
+
+
+@pytest.mark.real_engine
+def test_no_model_cli_finds_a_win_in_one(workdir):
+    # X at 0,0 and O at 0,1: X completes X O X at 0,2. Root expansion scores
+    # all 142 moves up front and the winning child is a finished game with
+    # Q = 1, so the uniform search finds it with a small budget.
+    result = run("best", "0,0", "0,1", "--simulations", "50")
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == "0,2"
+    assert "uniform priors" in result.stderr
+
+
+@pytest.mark.real_engine
+def test_model_flag_loads_the_checkpoint(workdir):
+    path = write_checkpoint(workdir / "model.pt", generation=7)
+    result = run("analyze", *POSITION, "--model", str(path), "--simulations", "20", "--json")
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.stdout)
+    assert len(report["moves"]) == 141
+    assert str(path) in result.stderr
+    assert "generation 7" in result.stderr
+
+    engine, _ = load_engine(path, None)
+    assert isinstance(engine.evaluator, NetworkEvaluator)
+    assert engine.evaluator.device.type == "cpu"
+    assert engine.size == 12
+
+
+@pytest.mark.real_engine
+def test_missing_model_path_is_an_error_from_the_real_loader(workdir):
+    with pytest.raises(FileNotFoundError):
+        load_engine(workdir / "missing.pt", None)
+
+
+@pytest.mark.real_engine
+def test_newest_checkpoint_is_picked(workdir):
+    root = workdir / "checkpoints"
+    write_checkpoint(root / "run" / "gen_001.pt", generation=1, seed=1)
+    newest = write_checkpoint(root / "run" / "gen_002.pt", generation=2, seed=2)
+
+    engine, notice = load_engine(None, None, root=root)
+    assert "generation 2" in notice and str(newest) in notice
+    # Same weights as the generation-2 file, not the generation-1 one.
+    expected = torch.load(newest, weights_only=True)["model_state"]
+    for key, value in engine.evaluator.network.state_dict().items():
+        assert torch.equal(value.cpu(), expected[key]), key
+
+
+@pytest.mark.real_engine
+def test_default_root_is_checkpoints_in_the_working_directory(workdir):
+    write_checkpoint(workdir / "checkpoints" / "gen_003.pt", generation=3)
+    result = run("best", *POSITION, "--simulations", "5")
+    assert result.exit_code == 0, result.output
+    assert "generation 3" in result.stderr
+
+
+@pytest.mark.real_engine
+@pytest.mark.parametrize("command", ["analyze", "best", "sandbox"])
+def test_board_size_mismatch_is_a_usage_error(workdir, launched, command):
+    path = write_checkpoint(workdir / "small.pt", size=4)
+    result = run(command, *POSITION, "--model", str(path))
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert "4x4" in result.stderr and "12x12" in result.stderr
+    assert launched == []
+
+
+@pytest.mark.real_engine
+def test_sandbox_checks_the_size_even_from_a_finished_position(workdir, launched):
+    # Undo from a finished game reaches positions the background search
+    # would then try, so the size must be checked before launch regardless.
+    path = write_checkpoint(workdir / "small.pt", size=4)
+    result = run("sandbox", *FINISHED, "--model", str(path))
+    assert result.exit_code == 2
+    assert "4x4" in result.stderr
+    assert launched == []
+
+
+@pytest.mark.real_engine
+def test_device_cpu_is_accepted(workdir):
+    path = write_checkpoint(workdir / "model.pt")
+    result = run("best", *POSITION, "--model", str(path), "--device", "cpu", "--simulations", "3")
+    assert result.exit_code == 0, result.output
+
+
+@pytest.mark.real_engine
+def test_device_auto_asks_select_device(workdir, monkeypatch):
+    asked = []
+
+    def fake_select_device(preference=None):
+        asked.append(preference)
+        return torch.device("cpu")
+
+    monkeypatch.setattr(network_evaluator, "select_device", fake_select_device)
+    path = write_checkpoint(workdir / "model.pt")
+    result = run("best", *POSITION, "--model", str(path), "--device", "auto", "--simulations", "3")
+    assert result.exit_code == 0, result.output
+    assert asked == [None]
+
+
+@pytest.mark.real_engine
+@pytest.mark.skipif(torch.cuda.is_available(), reason="needs a machine without CUDA")
+def test_unavailable_device_is_a_usage_error(workdir):
+    path = write_checkpoint(workdir / "model.pt")
+    result = run("best", *POSITION, "--model", str(path), "--device", "cuda")
+    assert result.exit_code == 2
+    assert "cuda" in result.stderr
+    assert "Traceback" not in result.output
+
+
+@pytest.mark.real_engine
+def test_invalid_device_is_rejected_and_help_lists_the_choices(workdir):
+    assert run("best", *POSITION, "--device", "tpu").exit_code == 2
+    help_text = run("best", "--help").stdout
+    for choice in ("auto", "cpu", "mps", "cuda"):
+        assert choice in help_text
+
+
+@pytest.mark.real_engine
+def test_device_is_ignored_without_a_model(workdir):
+    result = run("best", "0,0", "0,1", "--device", "mps", "--simulations", "5")
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == "0,2"
+
+
+@pytest.mark.real_engine
+def test_the_cli_loader_is_the_adapter(workdir):
+    assert app_module.load_engine is adapter_module.load_engine

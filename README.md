@@ -2,7 +2,7 @@
 
 An [AlphaZero](https://arxiv.org/abs/1712.01815)-style engine for **OXOX**, a two-player board game derived from Tic-tac-toe, together with tooling for analyzing positions and studying the game.
 
-> **Status:** early development. The game rules (roadmap step 1), the CLI (step 2) and the engine (step 3: search and network) are done; the training pipeline (step 4) is designed but not built. The CLI still runs on a placeholder engine with meaningless scores until a trained network is connected to it.
+> **Status:** early development. The game rules (roadmap step 1), the CLI (step 2) and the engine (step 3: search and network) are done; the training pipeline (step 4) is designed but not built. The CLI runs on the engine; it plays on search alone until the training pipeline (step 4) produces a checkpoint.
 
 ## The game
 

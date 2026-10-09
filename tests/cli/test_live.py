@@ -67,7 +67,7 @@ class InterruptedEngine:
 
     def search(self, state, max_simulations=None):
         for n in (100, 200):
-            yield Analysis(value=0.5, scores={(0, 0): 0.5}, simulations=n)
+            yield Analysis(value=0.5, scores={(0, 0): 0.5}, simulations=n, chosen=(0, 0))
         raise KeyboardInterrupt
 
 
@@ -88,7 +88,9 @@ def test_text_mode_renders_the_report_with_simulation_count():
 
 
 def test_cli_live_json_until_cap(monkeypatch):
-    monkeypatch.setattr(app_module, "load_engine", lambda model, seed: fast_engine())
+    monkeypatch.setattr(
+        app_module, "load_engine", lambda model, seed, device="cpu": (fast_engine(), "")
+    )
     result = CliRunner().invoke(
         app, ["analyze", "5,5", "6,6", "5,6", "--live", "--json", "--simulations", "1000"]
     )

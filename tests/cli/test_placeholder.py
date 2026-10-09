@@ -9,7 +9,7 @@ import math
 import pytest
 
 from ox_zero.cli.engine_port import Analysis, analyze
-from ox_zero.cli.placeholder import PlaceholderEngine, load_engine
+from ox_zero.cli.placeholder import PlaceholderEngine
 from ox_zero.game import legal_moves, play
 
 POSITION = play([(5, 5), (6, 6), (5, 6)])
@@ -82,6 +82,14 @@ def test_scores_settle_as_the_search_deepens():
     assert late < early / 3
 
 
+@pytest.mark.parametrize("seed", [0, 1, 2])
+@pytest.mark.parametrize("moves", [[], [(5, 5), (6, 6), (5, 6)], [(0, 0), (11, 11)]])
+def test_chosen_is_the_top_scoring_move(seed, moves):
+    # The placeholder has no visit counts, so its "choice" is its top score.
+    for snapshot in fast_engine(seed).search(play(moves), max_simulations=300):
+        assert snapshot.chosen == snapshot.top(1)[0][0]
+
+
 def test_searching_a_finished_game_is_an_error():
     finished = play([(5, 5), (6, 6), (5, 7), (5, 6)])
     with pytest.raises(ValueError):
@@ -95,21 +103,3 @@ def test_rate_limits_throughput():
     start = time.perf_counter()
     analyze(PlaceholderEngine(seed=0, rate=20_000), POSITION, simulations=1000)
     assert time.perf_counter() - start >= 0.04
-
-
-# --- load_engine -------------------------------------------------------------
-
-
-def test_without_a_model_the_placeholder_is_used():
-    assert isinstance(load_engine(None, seed=0), PlaceholderEngine)
-
-
-def test_missing_model_path_is_an_error(tmp_path):
-    with pytest.raises(FileNotFoundError):
-        load_engine(tmp_path / "nope.pt", seed=0)
-
-
-def test_existing_model_path_still_loads_the_placeholder_for_now(tmp_path):
-    checkpoint = tmp_path / "model.pt"
-    checkpoint.write_bytes(b"")
-    assert isinstance(load_engine(checkpoint, seed=0), PlaceholderEngine)

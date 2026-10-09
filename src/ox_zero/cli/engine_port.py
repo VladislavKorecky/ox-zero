@@ -8,9 +8,10 @@ interface it needs, and whatever provides the analysis is connected through
 a small adapter that translates into this shape. The engine package stays
 free to have whatever design suits it, and never imports the CLI.
 
-Today the only implementation is `PlaceholderEngine` (see `placeholder.py`).
-Connecting a real engine means writing one adapter that implements `Engine`
-below, and returning it from the CLI's engine loader.
+The real implementation is `SearchEngine` in `adapter.py`, which translates
+the AlphaZero search (`ox_zero.engine.search.analyse`) into this shape.
+`PlaceholderEngine` (`placeholder.py`) is a fast, fake implementation kept for
+the CLI's own tests.
 
 The two requirements, both fixed by the CLI specification (docs/cli.md):
 
@@ -42,11 +43,24 @@ class Analysis:
             on the board).
         simulations: How much search produced this snapshot, shown in the
             status line and used as the `--simulations` budget.
+        chosen: The move the engine would play. For the real engine that is
+            the most visited root move, which can differ from the
+            highest-scoring one: the visit count integrates both a move's
+            value and how confident the search is in it, while a rarely
+            visited move's score is an average of very few samples (noise).
+            Required, with no default, so an adapter cannot forget it.
     """
 
     value: float
     scores: Mapping[Cell, float]
     simulations: int
+    chosen: Cell
+
+    def __post_init__(self) -> None:
+        # Fail where a broken adapter builds the snapshot, not later as a
+        # KeyError deep inside `best`.
+        if self.chosen not in self.scores:
+            raise ValueError(f"chosen move {self.chosen} has no score")
 
     def top(self, n: int) -> list[tuple[Cell, float]]:
         """The `n` highest-scoring moves, best first; ties in board order."""
@@ -57,8 +71,8 @@ class Analysis:
 
     @property
     def best(self) -> tuple[Cell, float]:
-        """The chosen move (the top-scoring one) and its score."""
-        return self.top(1)[0]
+        """The engine's chosen move and its score (not necessarily `top(1)`)."""
+        return self.chosen, self.scores[self.chosen]
 
 
 class Engine(Protocol):

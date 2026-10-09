@@ -2,7 +2,7 @@
 
 This is the specification of the `ox-zero` command line: every command, flag, input format, and output. The implementation in `src/ox_zero/cli/` follows it, and any change to the CLI's behaviour starts here.
 
-> The CLI is implemented, but the engine behind it is a **placeholder** until roadmap step 3: every command works, and the scores it prints are meaningless. The CLI says so on stderr each time it starts the engine.
+> The CLI runs the AlphaZero search. Until the training pipeline (roadmap step 4) produces a checkpoint, it searches with uniform priors: it finds short tactics, but has no positional judgement. The CLI says which engine it loaded on stderr each time it starts.
 
 The command is `ox-zero`. `analyze` and `best` take a position, print a human-readable report by default, and print JSON with `--json`. `sandbox` is an interactive screen.
 
@@ -29,9 +29,10 @@ Flags. Not every flag makes sense for every command; the last three columns say 
 |------|-------------|:---:|:---:|:---:|
 | `--simulations N` | Tree-search playouts per analysis. Strength versus speed. Default 800. With `--live`, an optional cap (no cap by default). | ✓ | ✓ | |
 | `--live` | Keep analysing and stream reports until interrupted. See [Live analysis](#live-analysis). | ✓ | | |
-| `--model PATH` | Checkpoint to load. Defaults to the newest in `checkpoints/`. With no checkpoint available, a placeholder engine is used and a notice says so. A path that does not exist is an error. | ✓ | ✓ | ✓ |
+| `--model PATH` | Checkpoint to load. Defaults to the newest in `checkpoints/`. With no checkpoint available, the search runs with uniform priors and a notice says so. A path that does not exist, a file that is not a readable checkpoint, and a checkpoint for another board size are errors (status 2). | ✓ | ✓ | ✓ |
 | `--top N` | Number of candidate moves in the top section. Default 3. | ✓ | | ✓ |
-| `--seed N` | Fix randomness for reproducible output. | ✓ | ✓ | ✓ |
+| `--device NAME` | Where the network runs: `cpu` (default), `mps`, `cuda`, or `auto` for the best available. Ignored when no model is loaded. `cpu` is the default because analysis evaluates one position at a time, where a GPU is slower (see [engineering.md](design/engineering.md#measured-2026-09-27)). A device this machine lacks is an error (status 2). | ✓ | ✓ | ✓ |
+| `--seed N` | Fix randomness for reproducible output. The real engine's analysis is deterministic; the seed only affects engines that sample. | ✓ | ✓ | ✓ |
 | `--json` | Machine-readable output instead of text. | ✓ | ✓ | |
 
 Why the gaps:
@@ -139,6 +140,8 @@ $ ox-zero analyze 5,5 6,6 5,6 --live --json
 ## `best`
 
 Prints the chosen move and nothing else, so the output can be fed straight into another command.
+
+The chosen move is the one the search visited most, which is what AlphaZero plays. It can differ from the highest score shown by `analyze`: a move visited only a few times can have a lucky high average, while the visit count reflects how strongly the search kept preferring a move.
 
 ```
 $ ox-zero best 5,5 6,6 5,6
