@@ -49,27 +49,79 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass
 
 import numpy as np
 
 from ox_zero.game.rules import Cell, State, apply_move, is_terminal, legal_moves
 
 
-@dataclass(slots=True)
 class Node:
     """One position in the search tree, plus the statistics of the edge into it.
 
     `children` is `None` until the node is expanded; terminal nodes are never
     expanded and keep `None`. Once expanded it maps every legal move, in board
     order, to its child.
+
+    Lazy state: an expansion creates a child for every legal move (141 on an
+    early 12x12 board), but a simulation then visits only one of them, and
+    most children are never visited at all. A `State` holds a full copy of the
+    board, so building every child's state up front made boards about 88% of
+    the tree's memory. A child made by `expand` therefore stores only a
+    reference to its parent's (shared, not copied) state and its own move, and
+    builds its state the first time `state` is read. It caches it and drops
+    the parent reference, so the parent's board is not kept alive any longer
+    than the parent itself keeps it.
+
+    `__slots__` instead of a per-instance `__dict__`: a few hundred bytes
+    saved per node, which matters at hundreds of thousands of nodes.
     """
 
-    state: State
-    prior: float  # P(s,a) of the edge into this node
-    visit_count: int = 0  # N(s,a)
-    value_sum: float = 0.0  # W(s,a), for the player who played a
-    children: dict[Cell, Node] | None = None
+    __slots__ = ("_state", "_parent_state", "_move", "prior", "visit_count", "value_sum", "children")
+
+    def __init__(
+        self,
+        state: State,
+        prior: float,
+        visit_count: int = 0,
+        value_sum: float = 0.0,
+        children: dict[Cell, Node] | None = None,
+    ) -> None:
+        self._state: State | None = state
+        self._parent_state: State | None = None
+        self._move: Cell | None = None
+        self.prior = prior  # P(s,a) of the edge into this node
+        self.visit_count = visit_count  # N(s,a)
+        self.value_sum = value_sum  # W(s,a), for the player who played a
+        self.children = children
+
+    @classmethod
+    def lazy(cls, parent_state: State, move: Cell, prior: float) -> Node:
+        """A child whose state, `apply_move(parent_state, move)`, is built on first use."""
+        node = cls.__new__(cls)
+        node._state = None
+        node._parent_state = parent_state
+        node._move = move
+        node.prior = prior
+        node.visit_count = 0
+        node.value_sum = 0.0
+        node.children = None
+        return node
+
+    @property
+    def state(self) -> State:
+        """The position this node represents (built and cached on first read)."""
+        if self._state is None:
+            assert self._parent_state is not None and self._move is not None
+            self._state = apply_move(self._parent_state, self._move)
+            self._parent_state = None  # no longer needed; let it go
+        return self._state
+
+    def __repr__(self) -> str:
+        where = f"move={self._move}" if self._state is None else f"state={self._state!r}"
+        return (
+            f"Node({where}, prior={self.prior}, visit_count={self.visit_count},"
+            f" value_sum={self.value_sum}, expanded={self.expanded})"
+        )
 
     @property
     def q(self) -> float:
@@ -175,7 +227,7 @@ def expand(node: Node, policy: np.ndarray) -> None:
     if not total > 0.0:
         raise ValueError("policy puts no mass on any legal move")
     node.children = {
-        move: Node(apply_move(node.state, move), prior=weight / total)
+        move: Node.lazy(node.state, move, prior=weight / total)
         for move, weight in zip(moves, weights)
     }
 

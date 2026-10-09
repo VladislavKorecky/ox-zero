@@ -53,7 +53,7 @@ This seam is what makes the search testable, and it is also where batching acros
 
 ## Tree representation
 
-**Decided:** node objects. A `Node` holds its `State`, `prior`, `visit_count`, `value_sum`, and a dict `move -> Node` of expanded children; `Q` is a property. This maps one-to-one onto the paper's `N, W, Q, P` and is easy to read and to debug. It is slower than array storage; lockstep batching hides most of the cost, and the array representation is a deferred optimisation ([upgrades.md](upgrades.md#engineering)).
+**Decided:** node objects. A `Node` holds its `State`, `prior`, `visit_count`, `value_sum`, and a dict `move -> Node` of expanded children; `Q` is a property. This maps one-to-one onto the paper's `N, W, Q, P` and is easy to read and to debug. It is slower than array storage; lockstep batching hides most of the cost, and the array representation is a deferred optimisation ([upgrades.md](upgrades.md#engineering)). A child's `State` is built lazily, on first access, from its parent's state and its move (2026-10-09): most children are never visited, and building every board up front made boards 88% of the tree's memory. That took one 12x12 expansion from 203 KB to 29 KB and made an analysis search about 13× faster, with no API change.
 
 The rules stay immutable and functional; the tree is the one place with mutable statistics, and it is confined to `mcts.py`.
 
