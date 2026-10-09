@@ -39,7 +39,8 @@ def main() -> None:
     args = parser.parse_args()
     print(f"Parameters: {vars(args)}")
 
-    if Path("checkpoints") in args.out.parents:
+    # Resolved, so an absolute path or one through `..` is caught too.
+    if Path("checkpoints").resolve() in args.out.resolve().parents:
         print("Warning: under checkpoints/, so the CLI will load it automatically.")
 
     # Seeding torch fixes the random initialisation, so the same arguments

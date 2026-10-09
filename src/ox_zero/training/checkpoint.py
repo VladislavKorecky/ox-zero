@@ -27,7 +27,7 @@ import contextlib
 import dataclasses
 import os
 import re
-import tempfile
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -129,15 +129,16 @@ def save_checkpoint(
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     # The temporary name starts with a dot and does not end in `.pt`, so
-    # `latest_checkpoint` never mistakes a half-written file for a checkpoint.
-    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    # `latest_checkpoint` never mistakes a half-written file for a checkpoint;
+    # the random part keeps two concurrent saves from colliding. Mode 0o666
+    # is what a plain `open` asks for: the kernel subtracts the umask, so the
+    # checkpoint gets the usual permissions (`tempfile.mkstemp` would make
+    # it owner-only, and the rename would keep that).
+    temporary = path.parent / f".{path.name}.{uuid.uuid4().hex}.tmp"
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     try:
         with os.fdopen(fd, "wb") as file:
             torch.save(data, file)
-            # `mkstemp` creates the file owner-only (0600) and the rename
-            # keeps that mode; give it the mode a plain `open` would have
-            # (0666 minus the umask), so other users can still read it.
-            os.fchmod(file.fileno(), 0o666 & ~_umask())
             # Push the bytes to disk before the rename. Without this, after a
             # power cut the rename can be on disk while the data is not,
             # leaving exactly the truncated file the rename exists to avoid.
@@ -241,13 +242,6 @@ def latest_checkpoint(root: Path) -> Path | None:
         return None
     # Tuples compare element by element: generation first, then mtime.
     return max(candidates, key=lambda c: (c[0], c[1]))[2]
-
-
-def _umask() -> int:
-    """The process's umask. There is no read-only call: set it, then restore it."""
-    mask = os.umask(0)
-    os.umask(mask)
-    return mask
 
 
 def _to_cpu(value: Any) -> Any:

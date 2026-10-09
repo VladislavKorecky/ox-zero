@@ -336,6 +336,17 @@ def test_board_size_mismatch_is_a_usage_error(workdir, launched, command):
 
 
 @pytest.mark.real_engine
+def test_sandbox_checks_the_size_even_from_a_finished_position(workdir, launched):
+    # Undo from a finished game reaches positions the background search
+    # would then try, so the size must be checked before launch regardless.
+    path = write_checkpoint(workdir / "small.pt", size=4)
+    result = run("sandbox", *FINISHED, "--model", str(path))
+    assert result.exit_code == 2
+    assert "4x4" in result.stderr
+    assert launched == []
+
+
+@pytest.mark.real_engine
 def test_device_cpu_is_accepted(workdir):
     path = write_checkpoint(workdir / "model.pt")
     result = run("best", *POSITION, "--model", str(path), "--device", "cpu", "--simulations", "3")

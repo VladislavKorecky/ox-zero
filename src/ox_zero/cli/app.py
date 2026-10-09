@@ -39,7 +39,15 @@ from ox_zero.cli.report import best_json, finished_best_json, report_json
 from ox_zero.cli.sandbox.app import run_sandbox
 from ox_zero.cli.sandbox.session import Session
 from ox_zero.cli.engine_port import Analysis, Engine
-from ox_zero.game import Cell, PositionError, State, is_terminal, parse_cell, parse_position
+from ox_zero.game import (
+    Cell,
+    PositionError,
+    State,
+    initial_state,
+    is_terminal,
+    parse_cell,
+    parse_position,
+)
 
 # AlphaZero's playout budget per move in the original paper. On 12x12 with a
 # network on CPU the search runs a few hundred simulations per second
@@ -212,10 +220,9 @@ def sandbox(
         _fail(err, str(error), tokens, error.token_index)
     engine = _load(model, seed, device, err)
     # The sandbox searches in a worker thread, where an error would tear down
-    # the screen. Every position it reaches has the start position's board
-    # size, so checking that one here, up front, covers the whole session.
-    if not is_terminal(session.state):
-        _check_engine_accepts(engine, session.state, err)
+    # the screen. Every position it reaches (undo included) has the start
+    # position's board size, so checking that size here covers the session.
+    _check_engine_accepts(engine, session.state, err)
     run_sandbox(session, engine, top)
 
 
@@ -267,15 +274,16 @@ def _load(model: Path | None, seed: int | None, device: Device, err: Console) ->
 
 
 def _check_engine_accepts(engine: Engine, state: State, err: Console) -> None:
-    """Exit with a usage error if the engine cannot search this position.
+    """Exit with a usage error if the engine cannot search boards of this size.
 
     `search()` validates eagerly and does no work until iterated, so calling
-    it and dropping the iterator is a free check. The failure that matters
-    here is a checkpoint trained for another board size; the position is
-    known not to be finished, so that is the only `ValueError` left.
+    it and dropping the iterator is a free check. It is called on the
+    *empty* board of the position's size rather than the position itself:
+    that is never a finished game, so the only `ValueError` left is the one
+    that matters, a checkpoint trained for another board size.
     """
     try:
-        engine.search(state)
+        engine.search(initial_state(state.size))
     except ValueError as error:
         _fail(err, str(error))
 
