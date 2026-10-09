@@ -1,7 +1,7 @@
 """Checkpoints: one self-describing file per network generation.
 
 Design: docs/design/engineering.md ("Configuration and checkpoints"); format
-decided in docs/plans/03-cli-adapter.md ("Decisions").
+decided in docs/plans/archive/03-cli-adapter.md ("Decisions").
 
 A checkpoint rebuilds the network from the file alone: the board size and
 `NetworkConfig` are stored next to the weights, so loading needs no
