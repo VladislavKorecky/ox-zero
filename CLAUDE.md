@@ -32,4 +32,4 @@ Layout: `src/ox_zero/` is the package, `tests/` mirrors it. Python 3.14 (Torch 2
 
 ## Gotchas
 
-- GPU acceleration on this machine (Apple Silicon) is via PyTorch's `mps` backend, not CUDA. Select the device at runtime (`mps` if available, else `cpu`) rather than hardcoding; MPS lacks float64 and a few ops silently fall back to CPU.
+- GPU acceleration on this machine (Apple Silicon) is via PyTorch's `mps` backend, not CUDA. Select the device at runtime (`select_device()`: `mps` if available, else `cpu`) rather than hardcoding; MPS lacks float64 and a few ops silently fall back to CPU. Exception: the CLI's `--device` defaults to `cpu`, because analysis runs at batch size 1, where `mps` measured 1.7–3× slower (docs/design/engineering.md, "Measured"); `--device auto` gives runtime selection.
