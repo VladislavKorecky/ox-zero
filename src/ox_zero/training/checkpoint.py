@@ -24,16 +24,24 @@ the loader, never pickled as objects.
 from __future__ import annotations
 
 import dataclasses
+import os
 import re
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
-import torch
+# torch (and the network, which needs it) is imported inside the functions
+# that use it, not here. `latest_checkpoint` only looks at file names, and the
+# CLI calls it on every run to decide *whether* a network is needed at all;
+# importing torch costs about half a second, which the no-model path should
+# not pay. Under TYPE_CHECKING the names still exist for annotations.
+if TYPE_CHECKING:
+    import numpy as np
+    import torch
 
-from ox_zero.engine.network import Network, NetworkConfig
+    from ox_zero.engine.network import Network
 
 CHECKPOINT_FORMAT = 1
 
@@ -89,10 +97,19 @@ def save_checkpoint(
             resuming without them restarts the optimiser cold, with a burst
             of oversized early steps until the averages warm up again.
         configs: Dataclass instances by name, stored with `dataclasses.asdict`.
-        rng: The NumPy generator to record; the torch CPU RNG state is
-            recorded with it, so a resumed run continues the same random
-            sequences.
+        rng: The NumPy generator to record. The torch *CPU* generator's
+            state is recorded with it. Randomness drawn on a GPU (`mps`,
+            `cuda`) has its own generator, which is not saved, so only
+            CPU-side random sequences resume exactly.
+
+    The file is written atomically: to a temporary file in the same
+    directory, then renamed over `path`. A rename within one file system
+    either happens completely or not at all, so a save interrupted by
+    Ctrl-C or a crash never leaves a truncated `gen_N.pt` behind for
+    `latest_checkpoint` to pick as the newest.
     """
+    import torch
+
     data = {
         "format_version": CHECKPOINT_FORMAT,
         "size": network.size,
@@ -110,41 +127,72 @@ def save_checkpoint(
         ),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(data, path)
+    # The temporary name starts with a dot and does not end in `.pt`, so
+    # `latest_checkpoint` never mistakes a half-written file for a checkpoint.
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as file:
+            torch.save(data, file)
+        os.replace(temporary, path)
+    except BaseException:
+        # BaseException, not Exception: clean up on Ctrl-C too, then re-raise.
+        os.unlink(temporary)
+        raise
 
 
 def load_checkpoint(path: Path, device: torch.device | None = None) -> Checkpoint:
     """Read a checkpoint and rebuild its network on `device` (CPU by default).
 
     Raises:
-        ValueError: The file's `format_version` is not one this code reads.
+        ValueError: The file is not a checkpoint this code can read: an
+            unknown `format_version`, missing keys, weights that do not fit
+            the stored architecture, or not a checkpoint at all. Whatever
+            the cause, one exception type with the path in the message, so
+            the CLI can report it cleanly.
     """
-    # `weights_only=True`: plain data only, see the module docstring.
-    # `map_location="cpu"`: tensors land on CPU whatever device saved them;
-    # the network is moved afterwards, in one place.
-    data = torch.load(path, weights_only=True, map_location="cpu")
+    import torch
+
+    from ox_zero.engine.network import Network, NetworkConfig
+
+    try:
+        # `weights_only=True`: plain data only, see the module docstring.
+        # `map_location="cpu"`: tensors land on CPU whatever device saved
+        # them; the network is moved afterwards, in one place.
+        data = torch.load(path, weights_only=True, map_location="cpu")
+    except Exception as error:  # corrupt zip, refused pickle, ...
+        raise ValueError(f"{path}: not a readable checkpoint ({error})") from error
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: not a checkpoint (contains {type(data).__name__})")
     version = data.get("format_version")
     if version != CHECKPOINT_FORMAT:
         raise ValueError(
             f"{path}: checkpoint format {version} is not supported (expected {CHECKPOINT_FORMAT})"
         )
 
-    network = Network(data["size"], NetworkConfig(**data["network_config"]))
-    # strict=True: every key in the file must match a key in the network and
-    # vice versa. An architecture mismatch must fail loudly here instead of
-    # loading half the weights and leaving the rest at random initialisation.
-    network.load_state_dict(data["model_state"], strict=True)
+    try:
+        network = Network(data["size"], NetworkConfig(**data["network_config"]))
+        # strict=True: every key in the file must match a key in the network
+        # and vice versa, with matching shapes. An architecture mismatch must
+        # fail loudly here instead of loading half the weights and leaving
+        # the rest at random initialisation.
+        network.load_state_dict(data["model_state"], strict=True)
+        checkpoint = Checkpoint(
+            network=network,
+            size=data["size"],
+            generation=data["generation"],
+            configs=data["configs"],
+            optimizer_state=data["optimizer_state"],
+            rng=data["rng"],
+        )
+    except (KeyError, TypeError, RuntimeError) as error:
+        # KeyError: a missing top-level key. TypeError: `network_config` has
+        # unknown or missing fields. RuntimeError: `load_state_dict` found
+        # missing, unexpected, or wrongly shaped weights.
+        raise ValueError(f"{path}: malformed checkpoint ({error})") from error
+
     network.to(device if device is not None else torch.device("cpu"))
     network.eval()
-
-    return Checkpoint(
-        network=network,
-        size=data["size"],
-        generation=data["generation"],
-        configs=data["configs"],
-        optimizer_state=data["optimizer_state"],
-        rng=data["rng"],
-    )
+    return checkpoint
 
 
 def latest_checkpoint(root: Path) -> Path | None:
@@ -160,7 +208,10 @@ def latest_checkpoint(root: Path) -> Path | None:
     candidates = []
     for path in root.rglob("gen_*.pt"):
         match = _NAME.fullmatch(path.name)
-        if match:
+        # `is_file` follows symlinks: a directory with a checkpoint's name, or
+        # a link whose target was deleted, is skipped instead of crashing
+        # `stat` (or being returned and failing later in `torch.load`).
+        if match and path.is_file():
             candidates.append((int(match.group(1)), path.stat().st_mtime, path))
     if not candidates:
         return None
@@ -170,10 +221,15 @@ def latest_checkpoint(root: Path) -> Path | None:
 
 def _to_cpu(value: Any) -> Any:
     """Copy every tensor in a nested state dict to CPU, leaving the rest as is."""
+    import torch
+
     if isinstance(value, torch.Tensor):
         return value.detach().cpu()
     if isinstance(value, dict):
         return {k: _to_cpu(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
+    # Exact types only: a subclass (a namedtuple, say) may not accept a
+    # single iterable in its constructor. Optimiser state dicts hold plain
+    # dicts, lists and tuples; anything else is left untouched.
+    if type(value) in (list, tuple):
         return type(value)(_to_cpu(v) for v in value)
     return value

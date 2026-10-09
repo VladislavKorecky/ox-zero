@@ -176,6 +176,44 @@ def test_unknown_format_version_is_rejected(tmp_path):
         load_checkpoint(path)
 
 
+def test_save_leaves_no_temporary_files(tmp_path):
+    # The write goes to a temporary file that is renamed into place, so an
+    # interrupted save never leaves a truncated gen_N.pt for
+    # `latest_checkpoint` to pick. A finished save leaves only the target.
+    save_checkpoint(tmp_path / "gen_000.pt", tiny_network(), generation=0)
+    assert [p.name for p in tmp_path.iterdir()] == ["gen_000.pt"]
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param(b"not a checkpoint at all", id="garbage"),
+        pytest.param(None, id="a bare tensor"),
+        pytest.param({"format_version": 1}, id="missing keys"),
+    ],
+)
+def test_a_malformed_file_is_a_value_error(tmp_path, content):
+    # Whatever is wrong with the file, callers (the CLI) get one exception
+    # type with the path in the message, not a raw traceback.
+    path = tmp_path / "gen_000.pt"
+    if isinstance(content, bytes):
+        path.write_bytes(content)
+    else:
+        torch.save(torch.zeros(3) if content is None else content, path)
+    with pytest.raises(ValueError, match="gen_000.pt"):
+        load_checkpoint(path)
+
+
+def test_an_architecture_mismatch_is_a_value_error(tmp_path):
+    path = tmp_path / "gen_000.pt"
+    save_checkpoint(path, tiny_network(), generation=0)
+    data = torch.load(path, weights_only=True)
+    data["network_config"]["filters"] = 8  # weights are for 4 filters
+    torch.save(data, path)
+    with pytest.raises(ValueError, match="gen_000.pt"):
+        load_checkpoint(path)
+
+
 def test_loads_onto_the_requested_device(tmp_path):
     path = tmp_path / "gen_000.pt"
     save_checkpoint(path, tiny_network(), generation=0)
@@ -204,6 +242,13 @@ def test_latest_tie_goes_to_the_most_recently_modified(tmp_path):
     # And the other way round, so directory order can't be what decided it.
     os.utime(older, (3_000_000, 3_000_000))
     assert latest_checkpoint(tmp_path) == older
+
+
+def test_latest_ignores_directories_and_dangling_links(tmp_path):
+    (tmp_path / "gen_099.pt").mkdir()
+    (tmp_path / "gen_050.pt").symlink_to(tmp_path / "deleted.pt")
+    (tmp_path / "gen_001.pt").touch()
+    assert latest_checkpoint(tmp_path) == tmp_path / "gen_001.pt"
 
 
 def test_latest_is_none_for_an_empty_or_missing_root(tmp_path):
