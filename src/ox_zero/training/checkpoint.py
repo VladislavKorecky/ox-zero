@@ -27,7 +27,7 @@ import contextlib
 import dataclasses
 import os
 import re
-import uuid
+import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -134,8 +134,12 @@ def save_checkpoint(
     # is what a plain `open` asks for: the kernel subtracts the umask, so the
     # checkpoint gets the usual permissions (`tempfile.mkstemp` would make
     # it owner-only, and the rename would keep that).
-    temporary = path.parent / f".{path.name}.{uuid.uuid4().hex}.tmp"
-    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    temporary = path.parent / f".{path.name}.{secrets.token_hex(4)}.tmp"
+    # O_EXCL: fail rather than reuse an existing file. O_BINARY exists only on
+    # Windows, where a descriptor is text mode by default and would mangle
+    # every newline byte in the zip; elsewhere it is 0 and changes nothing.
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    fd = os.open(temporary, flags, 0o666)
     try:
         with os.fdopen(fd, "wb") as file:
             torch.save(data, file)
@@ -145,6 +149,7 @@ def save_checkpoint(
             file.flush()
             os.fsync(file.fileno())
         os.replace(temporary, path)
+        _fsync_directory(path.parent)
     except BaseException:
         # BaseException, not Exception: clean up on Ctrl-C too, then re-raise.
         # A failing cleanup must not replace the error that caused it.
@@ -207,6 +212,8 @@ def load_checkpoint(path: Path, device: torch.device | None = None) -> Checkpoin
     target = device if device is not None else torch.device("cpu")
     try:
         network.to(target)
+    except torch.OutOfMemoryError:
+        raise  # the device exists but is full: not a "missing device" error
     except (RuntimeError, AssertionError) as error:
         # A device this machine does not have. torch raises AssertionError
         # ("Torch not compiled with CUDA enabled") or RuntimeError depending
@@ -242,6 +249,21 @@ def latest_checkpoint(root: Path) -> Path | None:
         return None
     # Tuples compare element by element: generation first, then mtime.
     return max(candidates, key=lambda c: (c[0], c[1]))[2]
+
+
+def _fsync_directory(directory: Path) -> None:
+    """Make a rename inside `directory` durable (the rename is directory metadata).
+
+    POSIX only: Windows cannot open a directory this way, and its rename
+    durability works differently, so there it is skipped.
+    """
+    if os.name != "posix":
+        return
+    fd = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def _to_cpu(value: Any) -> Any:

@@ -185,14 +185,14 @@ def test_save_leaves_no_temporary_files(tmp_path):
 
 
 def test_saved_file_has_the_usual_permissions(tmp_path):
-    # The temporary file is created owner-only (0600); the saved checkpoint
-    # must end up with the mode a plain write would give it (0666 minus the
-    # umask), or other users on a shared machine cannot load it.
-    umask = os.umask(0)
-    os.umask(umask)
+    # The atomic save writes through a temporary file; the checkpoint must
+    # still get the mode a plain write would give it, or other users on a
+    # shared machine cannot load it. Compared against a file made by `open`.
+    plain = tmp_path / "plain"
+    plain.write_bytes(b"")
     path = tmp_path / "gen_000.pt"
     save_checkpoint(path, tiny_network(), generation=0)
-    assert path.stat().st_mode & 0o777 == 0o666 & ~umask
+    assert path.stat().st_mode & 0o777 == plain.stat().st_mode & 0o777
 
 
 @pytest.mark.parametrize(

@@ -146,7 +146,7 @@ def analyze(
         return
 
     engine = _load(model, seed, device, err)
-    _check_engine_accepts(engine, state, err)
+    _check_engine_accepts(engine, state.size, err)
 
     if live:
         from ox_zero.cli.live import run_live
@@ -193,7 +193,7 @@ def best(
         raise typer.Exit(code=1)
 
     engine = _load(model, seed, device, err)
-    _check_engine_accepts(engine, state, err)
+    _check_engine_accepts(engine, state.size, err)
     analysis = _search_with_progress(engine, state, simulations or DEFAULT_SIMULATIONS, err)
     if json_output:
         _print_json(best_json(analysis))
@@ -222,7 +222,7 @@ def sandbox(
     # The sandbox searches in a worker thread, where an error would tear down
     # the screen. Every position it reaches (undo included) has the start
     # position's board size, so checking that size here covers the session.
-    _check_engine_accepts(engine, session.state, err)
+    _check_engine_accepts(engine, session.state.size, err)
     run_sandbox(session, engine, top)
 
 
@@ -273,7 +273,7 @@ def _load(model: Path | None, seed: int | None, device: Device, err: Console) ->
     return engine
 
 
-def _check_engine_accepts(engine: Engine, state: State, err: Console) -> None:
+def _check_engine_accepts(engine: Engine, size: int, err: Console) -> None:
     """Exit with a usage error if the engine cannot search boards of this size.
 
     `search()` validates eagerly and does no work until iterated, so calling
@@ -283,7 +283,7 @@ def _check_engine_accepts(engine: Engine, state: State, err: Console) -> None:
     that matters, a checkpoint trained for another board size.
     """
     try:
-        engine.search(initial_state(state.size))
+        engine.search(initial_state(size))
     except ValueError as error:
         _fail(err, str(error))
 

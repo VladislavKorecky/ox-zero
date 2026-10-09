@@ -18,6 +18,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 import torch
@@ -39,9 +40,11 @@ def main() -> None:
     args = parser.parse_args()
     print(f"Parameters: {vars(args)}")
 
-    # Resolved, so an absolute path or one through `..` is caught too.
-    if Path("checkpoints").resolve() in args.out.resolve().parents:
-        print("Warning: under checkpoints/, so the CLI will load it automatically.")
+    # The CLI auto-loads only `gen_N.pt` files under checkpoints/ (the newest
+    # generation). Resolved, so an absolute path or one through `..` counts.
+    under_root = Path("checkpoints").resolve() in args.out.resolve().parents
+    if under_root and re.fullmatch(r"gen_\d+\.pt", args.out.name):
+        print("Warning: the CLI may load this automatically (newest gen_N.pt under checkpoints/).")
 
     # Seeding torch fixes the random initialisation, so the same arguments
     # always write the same weights.
