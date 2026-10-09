@@ -47,14 +47,8 @@ def main() -> None:
     save_checkpoint(args.out, network, generation=0, configs={"search": ANALYSIS})
     print(args.out)
 
-    # Ask the CLI's own rule rather than re-implementing it here. The file is
-    # already saved, so a failure to scan checkpoints/ must not look like a
-    # failed save.
-    try:
-        newest = latest_checkpoint(Path("checkpoints"))
-    except OSError as error:
-        print(f"Note: could not scan checkpoints/ ({error}).")
-        return
+    # Ask the CLI's own rule rather than re-implementing it here.
+    newest = latest_checkpoint(Path("checkpoints"))
     if newest is not None and newest.resolve() == args.out.resolve():
         print("Warning: this is now the newest checkpoint; the CLI will load it automatically.")
 
