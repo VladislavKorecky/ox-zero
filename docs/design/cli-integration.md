@@ -13,7 +13,9 @@ The CLI owns its engine interface (`cli/engine_port.py`, see [architecture.md](.
 
 ## The one port change
 
-`Analysis.best` currently derives the best move from the highest score. AlphaZero chooses the **most visited** child, because `Q` on a rarely visited move is noise while the visit count already integrates value and confidence. **Decided:** `Analysis` gains an explicit field for the engine's chosen move, set by the adapter, and `best` returns it. `top(n)` keeps ranking by score, since it exists to show candidate moves with their win estimates. `docs/cli.md` already says `best` prints "the engine's chosen move" and needs only a clarifying sentence. `PlaceholderEngine` sets the field to its highest-scoring move, so nothing else changes.
+**Done** ([plan 03](../plans/03-cli-adapter.md), 2026-10-09): `Analysis.chosen` exists, and `best` returns it.
+
+`Analysis.best` used to derive the best move from the highest score. AlphaZero chooses the **most visited** child, because `Q` on a rarely visited move is noise while the visit count already integrates value and confidence. **Decided:** `Analysis` gains an explicit field for the engine's chosen move, set by the adapter, and `best` returns it. `top(n)` keeps ranking by score, since it exists to show candidate moves with their win estimates. `docs/cli.md` already says `best` prints "the engine's chosen move" and needs only a clarifying sentence. `PlaceholderEngine` sets the field to its highest-scoring move, so nothing else changes.
 
 ## Every legal move gets a genuine score
 
@@ -25,8 +27,14 @@ The spec requires a score for every legal move. A root child that PUCT never vis
 
 The search is a generator. In analysis mode each iteration runs one simulation (batch size 1) and yields a snapshot; building one costs `O(legal moves)`. The CLI already throttles its redraws, and it cancels a search simply by dropping the iterator, which the generator design supports with no extra machinery. Deferred: [virtual loss](upgrades.md#search) to batch leaves within one tree and speed up analysis.
 
-**GIL note (from the architecture document):** the sandbox runs the engine in a background thread. Torch releases the GIL during a forward pass, and the generator yields between simulations, so the UI gets scheduled regularly. The pure-Python tree work between yields is short.
+**GIL note (from the architecture document):** the sandbox runs the engine in a background thread. Torch releases the GIL during a forward pass, and the generator yields between simulations, so the UI gets scheduled regularly. The pure-Python tree work between yields is short. Measured once connected (2026-10-09, uniform priors, the worst case since nothing releases the GIL): about 13 ms from a keypress to the screen, 50–70 ms to play a move, and no snapshot of an old position ever displayed.
 
 ## Loading a model
 
-`--model PATH` or the newest checkpoint in `checkpoints/` (recursively, by generation), per the spec. The checkpoint carries its configs, so the adapter rebuilds the network from the file alone and selects the device at runtime. With no checkpoint the CLI keeps using `PlaceholderEngine` with its notice, as the spec says. A checkpoint trained on a different board size than the position being analysed is an error.
+`--model PATH` or the newest checkpoint in `checkpoints/` (recursively, by generation), per the spec. The checkpoint carries its configs, so the adapter rebuilds the network from the file alone and selects the device at runtime. A checkpoint trained on a different board size than the position being analysed is an error.
+
+Settled in [plan 03](../plans/03-cli-adapter.md#decisions-made-in-this-plan) on 2026-10-09, with three changes to `docs/cli.md`:
+
+- **No model: uniform-priors search, not the placeholder.** With no checkpoint the CLI runs the real search with `UniformEvaluator` and a notice says so. It finds short tactics with no training at all. `PlaceholderEngine` is test tooling only.
+- **`--device auto|cpu|mps|cuda`, default `cpu`.** Analysis runs at batch size 1, where `mps` measured 1.7–3× slower than `cpu` ([engineering.md](engineering.md#measured-2026-09-27)). Revisit the default when virtual loss batches the analysis.
+- **`--seed` is documented as having no effect on the real engine:** analysis mode has no noise and no sampling, so it is deterministic.

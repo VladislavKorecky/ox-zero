@@ -11,9 +11,9 @@ Everything importable lives in `src/ox_zero/`. `tests/` mirrors its layout.
 | Package | Owns | Status |
 |---------|------|--------|
 | `game` | OXOX rules (`rules.py`) and text notation for cells and positions (`notation.py`). Pure Python: no NumPy, no tensors. | Done (roadmap step 1) |
-| `engine` | Position analysis: the AlphaZero search and network. | Built (step 3), not yet connected to the CLI: see [plan 03](plans/03-cli-adapter.md) |
-| `training` | The self-play training pipeline. | Designed, not built (step 4): see [docs/design](design/README.md) |
-| `cli` | The `ox-zero` command: commands, rendering, JSON reports, the sandbox, and the engine port. | Done (step 2), on a placeholder engine |
+| `engine` | Position analysis: the AlphaZero search and network. | Built (step 3), connected to the CLI ([plan 03](plans/03-cli-adapter.md)) |
+| `training` | The self-play training pipeline. | Checkpoint format built (plan 03); the rest designed, not built (step 4): see [docs/design](design/README.md) |
+| `cli` | The `ox-zero` command: commands, rendering, JSON reports, the sandbox, and the engine port. | Done (step 2), running the engine |
 | `gui` | Graphical analysis interface. | Not started (step 5) |
 
 `scripts/` is reserved for one-off runners outside the package, such as launching training.
@@ -54,9 +54,9 @@ Cells are `row,col`, zero-based, row 0 at the top, column 0 at the left, everywh
 
 The CLI needs analysis results, but it must not dictate how an engine works. So the interface belongs to the consumer, not the provider (the "ports and adapters" pattern, a form of dependency inversion):
 
-- `cli/engine_port.py` defines what the CLI needs: `Analysis` (per-move win probabilities, a position value, and a simulation count) and the `Engine` protocol, whose `search()` yields snapshots that improve over time. Incremental results are a real requirement: `analyze --live` and the sandbox show analysis as it deepens.
-- `cli/placeholder.py` holds `PlaceholderEngine`, a stand-in with meaningless numbers, and `load_engine()`, the single point where the CLI obtains an engine.
-- Connecting a real engine means writing one adapter in `cli/` that wraps whatever `ox_zero.engine` provides into the `Engine` protocol, and returning it from `load_engine()`. The engine package itself stays free of any CLI-driven design.
+- `cli/engine_port.py` defines what the CLI needs: `Analysis` (per-move win probabilities, a position value, a simulation count, and the engine's chosen move) and the `Engine` protocol, whose `search()` yields snapshots that improve over time. Incremental results are a real requirement: `analyze --live` and the sandbox show analysis as it deepens.
+- `cli/adapter.py` holds `SearchEngine`, the adapter that maps `ox_zero.engine.search.analyse` snapshots onto `Analysis`, and `load_engine()`, the single point where the CLI obtains an engine: the given or newest checkpoint, else the same search with uniform priors. The engine package itself stays free of any CLI-driven design.
+- `cli/placeholder.py` holds `PlaceholderEngine`, a fast, deterministic stand-in with meaningless numbers. It is test tooling for the CLI and never returned by `load_engine()`.
 
 ### Output: results on stdout, everything else on stderr
 
@@ -69,7 +69,7 @@ The CLI needs analysis results, but it must not dictate how an engine works. So 
 - `cli/sandbox/session.py` holds the position, undo/redo history, and command language, with no UI. That makes every command unit-testable with plain function calls.
 - `cli/sandbox/app.py` is the Textual screen: a thin layer that feeds input into `Session` and redraws from it.
 - The engine runs in a background thread. Every position change cancels the search and starts a new one, and snapshots belonging to an old position are dropped.
-- **Constraint for any engine plugged in:** the thread shares Python's GIL with the UI. A search that computes without ever releasing it will make the screen lag.
+- **Constraint for any engine plugged in:** the thread shares Python's GIL with the UI. A search that computes without ever releasing it will make the screen lag. Measured with the real search (2026-10-09, uniform priors): about 13 ms from a keypress to the screen and 50–70 ms to play a move, against a few milliseconds with the placeholder. Noticeable on paper, fine in use.
 
 ### Tooling
 
@@ -82,10 +82,7 @@ The CLI needs analysis results, but it must not dictate how an engine works. So 
 
 The `training` package has a complete design in [docs/design](design/README.md): the training loop ([training.md](design/training.md)) and its place in the code structure ([engineering.md](design/engineering.md)). The `engine` it drives is built (search, network, and the evaluator seam between them, designed in [search.md](design/search.md), [network.md](design/network.md) and [engineering.md](design/engineering.md)). Improvements deferred from version 1 are in [upgrades.md](design/upgrades.md), and constants that wait on experiments in [open-questions.md](design/open-questions.md).
 
-Two things in the current code are affected once the engine is connected to the CLI ([cli-integration.md](design/cli-integration.md)):
-
-- `PlaceholderEngine` imitates only how the CLI expects results to *behave* (they arrive over time and settle). It is not a model for the real engine.
-- The `Engine` protocol in `cli/engine_port.py` stays the CLI's contract, reached through an adapter. It will gain one field: the engine's chosen move, because AlphaZero picks the most visited move rather than the highest-scoring one (see [cli-integration.md](design/cli-integration.md)).
+The engine is connected to the CLI ([plan 03](plans/03-cli-adapter.md), [cli-integration.md](design/cli-integration.md)): `Analysis` carries the engine's chosen move, and the placeholder is test tooling only.
 
 ## Deliberately undecided
 

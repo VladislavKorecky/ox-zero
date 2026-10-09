@@ -19,12 +19,13 @@ src/ox_zero/
     replay.py    the replay buffer
     trainer.py   the optimiser, one training step; TrainConfig
     evaluate.py  checkpoint tournaments and Elo
-    checkpoint.py save / load of weights + configs + optimiser + RNG state
+    checkpoint.py save / load of weights + configs + optimiser + RNG state; latest_checkpoint   (built, plan 03)
     run.py       the generation loop, logging, resume
   cli/
-    adapter.py   wraps engine.search into the CLI's Engine port (see cli-integration.md)
+    adapter.py   SearchEngine wraps engine.search into the CLI's Engine port; load_engine (built, plan 03)
 scripts/
   bench_search.py  simulations per second for a board size, evaluator and device
+  make_checkpoint.py  a random-weights checkpoint, to try --model before training exists
   train.py       entry point that builds configs and calls training.run
   plot.py        curves from metrics files (until a dashboard exists)
 checkpoints/     run outputs, gitignored
@@ -62,6 +63,8 @@ The rules stay immutable and functional; the tree is the one place with mutable 
 **Decided:** frozen dataclasses with defaults, one per concern: `NetworkConfig` (blocks, filters, value hidden size), `SearchConfig` (`c_base`, `c_init`, noise `ε` and `α`, simulations, temperature cutoff, root expansion), `SelfPlayConfig` (games per generation, parallel games), `TrainConfig` (batch size, steps per generation, learning rate, weight decay, buffer generations `K`). Board size is part of the run configuration and stored alongside.
 
 A checkpoint is a single `torch.save` file containing the model weights, optimiser state, every config, the board size, the generation number, and RNG state. A checkpoint therefore fully describes itself: the loader rebuilds the exact architecture and encoding without any external file. No YAML layer; a run is configured in code (`scripts/train.py`).
+
+**Format (plan 03):** the file holds plain data only (tensors, numbers, strings, lists, dicts), with configs stored as field dicts, and is loaded with `torch.load(..., weights_only=True)`. Unpickling arbitrary objects can execute code, so a downloaded checkpoint must never need it; the loader rebuilds the dataclasses itself. A `format_version` field guards future changes. Saves are atomic (temporary file, then rename), so an interrupted save never leaves a truncated newest checkpoint.
 
 `checkpoints/<run-name>/gen_NNN.pt`, gitignored. A model worth sharing is attached to a GitHub release, not committed.
 
