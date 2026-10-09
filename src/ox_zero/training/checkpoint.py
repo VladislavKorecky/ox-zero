@@ -162,8 +162,8 @@ def load_checkpoint(path: Path, device: torch.device | None = None) -> Checkpoin
     """Read a checkpoint and rebuild its network on `device` (CPU by default).
 
     Raises:
-        ValueError: The file is not a checkpoint this code can read: an
-            unknown `format_version`, missing keys, weights that do not fit
+        ValueError: The checkpoint cannot be loaded: an unknown
+            `format_version`, missing keys, weights that do not fit
             the stored architecture, not a checkpoint at all, or a `device`
             the weights cannot be moved to (missing, or out of memory). Whatever
             the cause, one exception type with the path in the message, so

@@ -264,7 +264,8 @@ def _load(model: Path | None, seed: int | None, device: Device, err: Console) ->
     try:
         engine, notice = load_engine(model, seed, device.value)
     except (FileNotFoundError, ValueError) as error:
-        # Missing file, or a file that is not a readable checkpoint.
+        # A missing file, an unreadable checkpoint, or a device the weights
+        # cannot be moved to (absent, or out of memory); the message says which.
         _fail(err, str(error))
     # soft_wrap: never insert line breaks of our own. Off a terminal Rich
     # would otherwise hard-wrap at 80 columns, splitting a long checkpoint

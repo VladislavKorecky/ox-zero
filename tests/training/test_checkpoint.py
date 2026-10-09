@@ -248,8 +248,10 @@ def test_a_device_failure_is_a_value_error_with_the_cause(tmp_path, monkeypatch)
         raise torch.OutOfMemoryError("CUDA out of memory")
 
     monkeypatch.setattr(Network, "to", fail)
-    with pytest.raises(ValueError, match="out of memory"):
+    with pytest.raises(ValueError) as info:
         load_checkpoint(path, torch.device("mps"))
+    message = str(info.value)
+    assert "out of memory" in message and "mps" in message and "gen_000.pt" in message
 
 
 def test_loads_onto_the_requested_device(tmp_path):
