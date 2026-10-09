@@ -12,10 +12,12 @@ Formulas under test (docs/design/search.md):
 """
 
 import math
+import tracemalloc
 
 import numpy as np
 import pytest
 
+from ox_zero.engine import mcts
 from ox_zero.engine.mcts import (
     Node,
     add_dirichlet_noise,
@@ -31,7 +33,6 @@ from ox_zero.engine.mcts import (
     terminal_value,
     visit_distribution,
 )
-from ox_zero.engine.evaluator import UniformEvaluator
 from ox_zero.game import apply_move, initial_state, is_terminal, play
 
 C_BASE = 19652.0
@@ -232,12 +233,12 @@ def test_expanding_a_terminal_node_raises():
 
 
 def uniform(state) -> np.ndarray:
-    return UniformEvaluator().evaluate([state])[0][0]
+    # Mass on occupied cells too; `expand` renormalises over the legal ones.
+    cells = state.size * state.size
+    return np.full(cells, 1 / cells, dtype=np.float32)
 
 
 def test_expansion_builds_no_child_boards(monkeypatch):
-    from ox_zero.engine import mcts
-
     calls = []
     real_apply_move = mcts.apply_move
     monkeypatch.setattr(mcts, "apply_move", lambda s, m: calls.append(m) or real_apply_move(s, m))
@@ -260,11 +261,14 @@ def test_a_lazy_child_state_is_the_parent_plus_its_move():
         assert child.state == apply_move(node.state, move)
 
 
+def test_a_node_needs_a_state_or_a_way_to_build_one():
+    with pytest.raises(TypeError):
+        Node(None, prior=1.0)
+
+
 def test_an_expansion_costs_far_less_than_its_child_boards():
     # Measured before the change: about 203 KB for 141 children, 178 KB of
     # which were the boards. The bound leaves room for the nodes themselves.
-    import tracemalloc
-
     state = play([(5, 5), (6, 6), (5, 6)])
     policy = uniform(state)
     nodes = [Node(state, prior=1.0) for _ in range(20)]

@@ -68,9 +68,15 @@ class Node:
     board, so building every child's state up front made boards about 88% of
     the tree's memory. A child made by `expand` therefore stores only a
     reference to its parent's (shared, not copied) state and its own move, and
-    builds its state the first time `state` is read. It caches it and drops
-    the parent reference, so the parent's board is not kept alive any longer
-    than the parent itself keeps it.
+    builds its state the first time `state` is read, then caches it.
+
+    The parent reference is kept after that, deliberately: the parent node
+    holds the same `State` object anyway, so it costs nothing extra (after
+    `reuse_subtree`, at most one old board stays alive), and never clearing it
+    means two threads reading `state` at once cannot see a half-updated node.
+
+    Nodes compare by identity, as tree nodes should: two nodes with equal
+    statistics are still different places in the tree.
 
     `__slots__` instead of a per-instance `__dict__`: a few hundred bytes
     saved per node, which matters at hundreds of thousands of nodes.
@@ -80,15 +86,20 @@ class Node:
 
     def __init__(
         self,
-        state: State,
+        state: State | None,
         prior: float,
         visit_count: int = 0,
         value_sum: float = 0.0,
         children: dict[Cell, Node] | None = None,
+        *,
+        parent_state: State | None = None,
+        move: Cell | None = None,
     ) -> None:
-        self._state: State | None = state
-        self._parent_state: State | None = None
-        self._move: Cell | None = None
+        if state is None and (parent_state is None or move is None):
+            raise TypeError("a Node needs a state, or a parent_state and a move to build it from")
+        self._state = state
+        self._parent_state = parent_state
+        self._move = move
         self.prior = prior  # P(s,a) of the edge into this node
         self.visit_count = visit_count  # N(s,a)
         self.value_sum = value_sum  # W(s,a), for the player who played a
@@ -97,30 +108,24 @@ class Node:
     @classmethod
     def lazy(cls, parent_state: State, move: Cell, prior: float) -> Node:
         """A child whose state, `apply_move(parent_state, move)`, is built on first use."""
-        node = cls.__new__(cls)
-        node._state = None
-        node._parent_state = parent_state
-        node._move = move
-        node.prior = prior
-        node.visit_count = 0
-        node.value_sum = 0.0
-        node.children = None
-        return node
+        return cls(None, prior, parent_state=parent_state, move=move)
 
     @property
     def state(self) -> State:
         """The position this node represents (built and cached on first read)."""
         if self._state is None:
-            assert self._parent_state is not None and self._move is not None
-            self._state = apply_move(self._parent_state, self._move)
-            self._parent_state = None  # no longer needed; let it go
+            # A lazy node always has both (enforced in __init__), and neither
+            # is ever cleared, so this is safe to run twice concurrently: both
+            # threads build equal states and either assignment is correct.
+            self._state = apply_move(self._parent_state, self._move)  # type: ignore[arg-type]
         return self._state
 
     def __repr__(self) -> str:
-        where = f"move={self._move}" if self._state is None else f"state={self._state!r}"
+        move = "root" if self._move is None else f"move={self._move}"
+        built = "built" if self._state is not None else "lazy"
         return (
-            f"Node({where}, prior={self.prior}, visit_count={self.visit_count},"
-            f" value_sum={self.value_sum}, expanded={self.expanded})"
+            f"Node({move}, state {built}, prior={self.prior:.4f}, N={self.visit_count},"
+            f" W={self.value_sum:.4f}, expanded={self.expanded})"
         )
 
     @property
