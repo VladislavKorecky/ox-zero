@@ -42,7 +42,7 @@ uv run python scripts/bench_search.py --size 12 --device mps   # defaults: 6x6, 
 
 ## make_checkpoint.py
 
-Writes a checkpoint with random (seeded) weights in the real format. Its weights are random and exist so that `--model` can be exercised before training. The default output, `checkpoints_random/gen_000.pt`, is deliberately outside `checkpoints/`: the CLI loads the newest checkpoint there automatically, and a random network would replace the no-model search on every run. See [plan 03](../docs/plans/03-cli-adapter.md), step 5.
+Writes a checkpoint with random (seeded) weights in the real format. Its weights are random and exist so that `--model` can be exercised before training. The default output, `checkpoints_random/gen_000.pt`, is deliberately outside `checkpoints/`: the CLI loads the newest checkpoint there automatically, and a random network would replace the no-model search on every run. See [plan 03](../docs/plans/archive/03-cli-adapter.md), step 5.
 
 ```bash
 uv run python scripts/make_checkpoint.py      # defaults: 12x12, 4x64 network, seed 0

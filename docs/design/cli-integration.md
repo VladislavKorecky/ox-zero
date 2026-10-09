@@ -13,7 +13,7 @@ The CLI owns its engine interface (`cli/engine_port.py`, see [architecture.md](.
 
 ## The one port change
 
-**Done** ([plan 03](../plans/03-cli-adapter.md), 2026-10-09): `Analysis.chosen` exists, and `best` returns it.
+**Done** ([plan 03](../plans/archive/03-cli-adapter.md), 2026-10-09): `Analysis.chosen` exists, and `best` returns it.
 
 `Analysis.best` used to derive the best move from the highest score. AlphaZero chooses the **most visited** child, because `Q` on a rarely visited move is noise while the visit count already integrates value and confidence. **Decided:** `Analysis` gains an explicit field for the engine's chosen move, set by the adapter, and `best` returns it. `top(n)` keeps ranking by score, since it exists to show candidate moves with their win estimates. `docs/cli.md` already says `best` prints "the engine's chosen move" and needs only a clarifying sentence. `PlaceholderEngine` sets the field to its highest-scoring move, so nothing else changes.
 
@@ -33,7 +33,7 @@ The search is a generator. In analysis mode each iteration runs one simulation (
 
 `--model PATH` or the newest checkpoint in `checkpoints/` (recursively, by generation), per the spec. The checkpoint carries its configs, so the adapter rebuilds the network from the file alone and selects the device at runtime. A checkpoint trained on a different board size than the position being analysed is an error.
 
-Settled in [plan 03](../plans/03-cli-adapter.md#decisions-made-in-this-plan) on 2026-10-09, with three changes to `docs/cli.md`:
+Settled in [plan 03](../plans/archive/03-cli-adapter.md#decisions-made-in-this-plan) on 2026-10-09, with three changes to `docs/cli.md`:
 
 - **No model: uniform-priors search, not the placeholder.** With no checkpoint the CLI runs the real search with `UniformEvaluator` and a notice says so. It finds short tactics with no training at all. `PlaceholderEngine` is test tooling only.
 - **`--device auto|cpu|mps|cuda`, default `cpu`.** Analysis runs at batch size 1, where `mps` measured 1.7–3× slower than `cpu` ([engineering.md](engineering.md#measured-2026-09-27)). Revisit the default when virtual loss batches the analysis.

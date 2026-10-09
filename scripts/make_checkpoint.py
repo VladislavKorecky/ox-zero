@@ -1,6 +1,6 @@
 """Write a checkpoint with random weights, so `--model` can be tried before training exists.
 
-Plan 03 (docs/plans/03-cli-adapter.md), step 5. The weights are random
+Plan 03 (docs/plans/archive/03-cli-adapter.md), step 5. The weights are random
 (seeded): the network's priors and values mean nothing, and searching with
 them is *worse* than the CLI's no-model mode, because random priors steer
 the search instead of leaving it neutral. The file exists only to exercise

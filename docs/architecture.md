@@ -11,7 +11,7 @@ Everything importable lives in `src/ox_zero/`. `tests/` mirrors its layout.
 | Package | Owns | Status |
 |---------|------|--------|
 | `game` | OXOX rules (`rules.py`) and text notation for cells and positions (`notation.py`). Pure Python: no NumPy, no tensors. | Done (roadmap step 1) |
-| `engine` | Position analysis: the AlphaZero search and network. | Built (step 3), connected to the CLI ([plan 03](plans/03-cli-adapter.md)) |
+| `engine` | Position analysis: the AlphaZero search and network. | Built (step 3), connected to the CLI ([plan 03](plans/archive/03-cli-adapter.md)) |
 | `training` | The self-play training pipeline. | Checkpoint format built (plan 03); the rest designed, not built (step 4): see [docs/design](design/README.md) |
 | `cli` | The `ox-zero` command: commands, rendering, JSON reports, the sandbox, and the engine port. | Done (step 2), running the engine |
 | `gui` | Graphical analysis interface. | Not started (step 5) |
@@ -82,7 +82,7 @@ The CLI needs analysis results, but it must not dictate how an engine works. So 
 
 The `training` package has a complete design in [docs/design](design/README.md): the training loop ([training.md](design/training.md)) and its place in the code structure ([engineering.md](design/engineering.md)). The `engine` it drives is built (search, network, and the evaluator seam between them, designed in [search.md](design/search.md), [network.md](design/network.md) and [engineering.md](design/engineering.md)). Improvements deferred from version 1 are in [upgrades.md](design/upgrades.md), and constants that wait on experiments in [open-questions.md](design/open-questions.md).
 
-The engine is connected to the CLI ([plan 03](plans/03-cli-adapter.md), [cli-integration.md](design/cli-integration.md)): `Analysis` carries the engine's chosen move, and the placeholder is test tooling only.
+The engine is connected to the CLI ([plan 03](plans/archive/03-cli-adapter.md), [cli-integration.md](design/cli-integration.md)): `Analysis` carries the engine's chosen move, and the placeholder is test tooling only.
 
 ## Deliberately undecided
 
