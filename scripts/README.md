@@ -34,7 +34,7 @@ Committed outputs of the default runs. Each script writes two files:
 
 ## bench_search.py
 
-Speed of the engine's search, not a measurement of the game: simulations per second, evaluator calls per second, and the share of time spent in the evaluator, for one board size, evaluator (`network` with random weights, or `uniform`) and device. It prints a Markdown row for pasting into a PR. See [plan 02](../docs/plans/02-engine-search-network.md), step 8.
+Speed of the engine's search, not a measurement of the game: simulations per second, evaluator calls per second, and the share of time spent in the evaluator, for one board size, evaluator (`network` with random weights, or `uniform`) and device. It prints a Markdown row for pasting into a PR. See [plan 02](../docs/plans/archive/02-engine-search-network.md), step 8.
 
 ```bash
 uv run python scripts/bench_search.py --size 12 --device mps   # defaults: 6x6, 800 simulations, 4x64 network, 3 repeats

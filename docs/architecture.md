@@ -11,7 +11,7 @@ Everything importable lives in `src/ox_zero/`. `tests/` mirrors its layout.
 | Package | Owns | Status |
 |---------|------|--------|
 | `game` | OXOX rules (`rules.py`) and text notation for cells and positions (`notation.py`). Pure Python: no NumPy, no tensors. | Done (roadmap step 1) |
-| `engine` | Position analysis: the AlphaZero search and network. | Built (step 3), not yet connected to the CLI: see [plan 03](plans/README.md) |
+| `engine` | Position analysis: the AlphaZero search and network. | Built (step 3), not yet connected to the CLI: see [plan 03](plans/03-cli-adapter.md) |
 | `training` | The self-play training pipeline. | Designed, not built (step 4): see [docs/design](design/README.md) |
 | `cli` | The `ox-zero` command: commands, rendering, JSON reports, the sandbox, and the engine port. | Done (step 2), on a placeholder engine |
 | `gui` | Graphical analysis interface. | Not started (step 5) |

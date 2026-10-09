@@ -1,6 +1,6 @@
 """Benchmark the search: simulations per second for one board size, evaluator and device.
 
-Plan 02 (docs/plans/02-engine-search-network.md), step 8. The first data
+Plan 02 (docs/plans/archive/02-engine-search-network.md), step 8. The first data
 point for docs/design/engineering.md, "Performance plan": measure before
 optimising anything.
 

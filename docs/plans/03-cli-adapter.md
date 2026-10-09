@@ -5,7 +5,7 @@
 | Status | Ready for implementation (scope and decisions settled 2026-10-09) |
 | Branches | Plan: `plan/cli-adapter`. Implementation: `feat/cli-adapter`. |
 | Design references | [cli-integration.md](../design/cli-integration.md) (the mapping, the port change, root expansion, loading a model), [engineering.md](../design/engineering.md) (checkpoints, devices, module layout, the measured batch-size-1 numbers), [docs/cli.md](../cli.md) (the behaviour the CLI must keep) |
-| Depends on | [Plan 02](02-engine-search-network.md) merged (PR #12): `ox_zero.engine` with `analyse`, `Snapshot`, `UniformEvaluator`, `NetworkEvaluator`, `select_device`, `Network`, `NetworkConfig`. |
+| Depends on | [Plan 02](archive/02-engine-search-network.md) merged (PR #12): `ox_zero.engine` with `analyse`, `Snapshot`, `UniformEvaluator`, `NetworkEvaluator`, `select_device`, `Network`, `NetworkConfig`. |
 
 ## Goal
 
