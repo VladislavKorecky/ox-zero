@@ -56,6 +56,12 @@ class Analysis:
     simulations: int
     chosen: Cell
 
+    def __post_init__(self) -> None:
+        # Fail where a broken adapter builds the snapshot, not later as a
+        # KeyError deep inside `best`.
+        if self.chosen not in self.scores:
+            raise ValueError(f"chosen move {self.chosen} has no score")
+
     def top(self, n: int) -> list[tuple[Cell, float]]:
         """The `n` highest-scoring moves, best first; ties in board order."""
         # `sorted` is stable, and `scores` is in board order, so sorting by

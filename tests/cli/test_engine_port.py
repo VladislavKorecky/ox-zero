@@ -52,6 +52,12 @@ def test_chosen_is_required():
 
 
 
+def test_chosen_must_be_a_scored_move():
+    # Caught where the Analysis is built, not later as a KeyError in `best`.
+    with pytest.raises(ValueError, match="9, 9"):
+        Analysis(value=0.5, scores={(0, 0): 0.5}, simulations=1, chosen=(9, 9))
+
+
 # --- analyze -----------------------------------------------------------------
 
 
