@@ -134,7 +134,7 @@ def save_checkpoint(
     # is what a plain `open` asks for: the kernel subtracts the umask, so the
     # checkpoint gets the usual permissions (`tempfile.mkstemp` would make
     # it owner-only, and the rename would keep that).
-    temporary = path.parent / f".{path.name}.{secrets.token_hex(4)}.tmp"
+    temporary = path.parent / f".{path.name}.{secrets.token_hex(8)}.tmp"
     # O_EXCL: fail rather than reuse an existing file. O_BINARY exists only on
     # Windows, where a descriptor is text mode by default and would mangle
     # every newline byte in the zip; elsewhere it is 0 and changes nothing.
@@ -143,13 +143,13 @@ def save_checkpoint(
     try:
         with os.fdopen(fd, "wb") as file:
             torch.save(data, file)
-            # Push the bytes to disk before the rename. Without this, after a
-            # power cut the rename can be on disk while the data is not,
-            # leaving exactly the truncated file the rename exists to avoid.
+            # Best effort to get the bytes to disk before the rename. This is
+            # not a power-loss guarantee (that would need the directory synced
+            # too, and F_FULLFSYNC on macOS); the rename is what protects
+            # against the common case, a save interrupted by Ctrl-C or a crash.
             file.flush()
             os.fsync(file.fileno())
         os.replace(temporary, path)
-        _fsync_directory(path.parent)
     except BaseException:
         # BaseException, not Exception: clean up on Ctrl-C too, then re-raise.
         # A failing cleanup must not replace the error that caused it.
@@ -165,7 +165,7 @@ def load_checkpoint(path: Path, device: torch.device | None = None) -> Checkpoin
         ValueError: The file is not a checkpoint this code can read: an
             unknown `format_version`, missing keys, weights that do not fit
             the stored architecture, not a checkpoint at all, or a `device`
-            this machine does not have. Whatever
+            the weights cannot be moved to (missing, or out of memory). Whatever
             the cause, one exception type with the path in the message, so
             the CLI can report it cleanly.
     """
@@ -212,12 +212,10 @@ def load_checkpoint(path: Path, device: torch.device | None = None) -> Checkpoin
     target = device if device is not None else torch.device("cpu")
     try:
         network.to(target)
-    except torch.OutOfMemoryError:
-        raise  # the device exists but is full: not a "missing device" error
     except (RuntimeError, AssertionError) as error:
-        # A device this machine does not have. torch raises AssertionError
-        # ("Torch not compiled with CUDA enabled") or RuntimeError depending
-        # on the backend.
+        # No such device on this machine (torch raises AssertionError, "Torch
+        # not compiled with CUDA enabled", or RuntimeError, by backend), or a
+        # device that is out of memory. torch's own message says which.
         raise ValueError(f"cannot load {path} onto device {target}: {error}") from error
     network.eval()
     return checkpoint
@@ -249,21 +247,6 @@ def latest_checkpoint(root: Path) -> Path | None:
         return None
     # Tuples compare element by element: generation first, then mtime.
     return max(candidates, key=lambda c: (c[0], c[1]))[2]
-
-
-def _fsync_directory(directory: Path) -> None:
-    """Make a rename inside `directory` durable (the rename is directory metadata).
-
-    POSIX only: Windows cannot open a directory this way, and its rename
-    durability works differently, so there it is skipped.
-    """
-    if os.name != "posix":
-        return
-    fd = os.open(directory, os.O_RDONLY)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
 
 
 def _to_cpu(value: Any) -> Any:

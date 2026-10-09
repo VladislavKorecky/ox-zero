@@ -188,11 +188,15 @@ def test_saved_file_has_the_usual_permissions(tmp_path):
     # The atomic save writes through a temporary file; the checkpoint must
     # still get the mode a plain write would give it, or other users on a
     # shared machine cannot load it. Compared against a file made by `open`.
-    plain = tmp_path / "plain"
-    plain.write_bytes(b"")
-    path = tmp_path / "gen_000.pt"
-    save_checkpoint(path, tiny_network(), generation=0)
-    assert path.stat().st_mode & 0o777 == plain.stat().st_mode & 0o777
+    # A known umask, so the expected mode is exactly 0o644 and an owner-only
+    # (0o600) regression cannot hide behind a strict umask on the machine.
+    previous = os.umask(0o022)
+    try:
+        path = tmp_path / "gen_000.pt"
+        save_checkpoint(path, tiny_network(), generation=0)
+    finally:
+        os.umask(previous)
+    assert path.stat().st_mode & 0o777 == 0o644
 
 
 @pytest.mark.parametrize(
@@ -231,6 +235,21 @@ def test_an_unavailable_device_is_a_value_error(tmp_path):
     save_checkpoint(path, tiny_network(), generation=0)
     with pytest.raises(ValueError, match="cuda"):
         load_checkpoint(path, torch.device("cuda"))
+
+
+def test_a_device_failure_is_a_value_error_with_the_cause(tmp_path, monkeypatch):
+    # Whatever goes wrong moving the weights (no such device, out of memory),
+    # callers get a ValueError that names the device and keeps torch's own
+    # message, so an out-of-memory error still reads as one.
+    path = tmp_path / "gen_000.pt"
+    save_checkpoint(path, tiny_network(), generation=0)
+
+    def fail(self, *args, **kwargs):
+        raise torch.OutOfMemoryError("CUDA out of memory")
+
+    monkeypatch.setattr(Network, "to", fail)
+    with pytest.raises(ValueError, match="out of memory"):
+        load_checkpoint(path, torch.device("mps"))
 
 
 def test_loads_onto_the_requested_device(tmp_path):

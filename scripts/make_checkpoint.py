@@ -18,7 +18,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import re
 from pathlib import Path
 
 import torch
@@ -26,7 +25,7 @@ import torch
 from ox_zero.engine.network import Network, NetworkConfig
 from ox_zero.engine.search import ANALYSIS
 from ox_zero.game.rules import BOARD_SIZE
-from ox_zero.training.checkpoint import save_checkpoint
+from ox_zero.training.checkpoint import latest_checkpoint, save_checkpoint
 
 
 def main() -> None:
@@ -40,12 +39,6 @@ def main() -> None:
     args = parser.parse_args()
     print(f"Parameters: {vars(args)}")
 
-    # The CLI auto-loads only `gen_N.pt` files under checkpoints/ (the newest
-    # generation). Resolved, so an absolute path or one through `..` counts.
-    under_root = Path("checkpoints").resolve() in args.out.resolve().parents
-    if under_root and re.fullmatch(r"gen_\d+\.pt", args.out.name):
-        print("Warning: the CLI may load this automatically (newest gen_N.pt under checkpoints/).")
-
     # Seeding torch fixes the random initialisation, so the same arguments
     # always write the same weights.
     torch.manual_seed(args.seed)
@@ -53,6 +46,11 @@ def main() -> None:
     network = Network(args.size, config)
     save_checkpoint(args.out, network, generation=0, configs={"search": ANALYSIS})
     print(args.out)
+
+    # Ask the CLI's own rule rather than re-implementing it here.
+    newest = latest_checkpoint(Path("checkpoints"))
+    if newest is not None and newest.resolve() == args.out.resolve():
+        print("Warning: this is now the newest checkpoint; the CLI will load it automatically.")
 
 
 if __name__ == "__main__":
