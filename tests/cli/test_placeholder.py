@@ -9,7 +9,7 @@ import math
 import pytest
 
 from ox_zero.cli.engine_port import Analysis, analyze
-from ox_zero.cli.placeholder import PlaceholderEngine, load_engine
+from ox_zero.cli.placeholder import PlaceholderEngine
 from ox_zero.game import legal_moves, play
 
 POSITION = play([(5, 5), (6, 6), (5, 6)])
@@ -103,21 +103,3 @@ def test_rate_limits_throughput():
     start = time.perf_counter()
     analyze(PlaceholderEngine(seed=0, rate=20_000), POSITION, simulations=1000)
     assert time.perf_counter() - start >= 0.04
-
-
-# --- load_engine -------------------------------------------------------------
-
-
-def test_without_a_model_the_placeholder_is_used():
-    assert isinstance(load_engine(None, seed=0), PlaceholderEngine)
-
-
-def test_missing_model_path_is_an_error(tmp_path):
-    with pytest.raises(FileNotFoundError):
-        load_engine(tmp_path / "nope.pt", seed=0)
-
-
-def test_existing_model_path_still_loads_the_placeholder_for_now(tmp_path):
-    checkpoint = tmp_path / "model.pt"
-    checkpoint.write_bytes(b"")
-    assert isinstance(load_engine(checkpoint, seed=0), PlaceholderEngine)

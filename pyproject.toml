@@ -27,6 +27,9 @@ testpaths = ["tests"]
 # Textual's test harness (`App.run_test`) is async; let pytest-asyncio run
 # `async def` tests without a per-test marker.
 asyncio_mode = "auto"
+markers = [
+    "real_engine: CLI test that loads the real engine instead of the placeholder fixture",
+]
 
 [dependency-groups]
 dev = [

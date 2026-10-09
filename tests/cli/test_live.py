@@ -88,7 +88,9 @@ def test_text_mode_renders_the_report_with_simulation_count():
 
 
 def test_cli_live_json_until_cap(monkeypatch):
-    monkeypatch.setattr(app_module, "load_engine", lambda model, seed: fast_engine())
+    monkeypatch.setattr(
+        app_module, "load_engine", lambda model, seed, device="cpu": (fast_engine(), "")
+    )
     result = CliRunner().invoke(
         app, ["analyze", "5,5", "6,6", "5,6", "--live", "--json", "--simulations", "1000"]
     )
