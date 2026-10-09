@@ -95,8 +95,9 @@ class Node:
         parent_state: State | None = None,
         move: Cell | None = None,
     ) -> None:
-        if state is None and (parent_state is None or move is None):
-            raise TypeError("a Node needs a state, or a parent_state and a move to build it from")
+        lazy = parent_state is not None or move is not None
+        if (state is None) == (not lazy) or (lazy and (parent_state is None or move is None)):
+            raise TypeError("a Node takes either a state, or both a parent_state and a move")
         self._state = state
         self._parent_state = parent_state
         self._move = move
@@ -115,17 +116,19 @@ class Node:
         """The position this node represents (built and cached on first read)."""
         if self._state is None:
             # A lazy node always has both (enforced in __init__), and neither
-            # is ever cleared, so this is safe to run twice concurrently: both
-            # threads build equal states and either assignment is correct.
+            # is ever cleared, so two threads racing here both succeed. They
+            # may build two equal-but-distinct State objects; the last
+            # assignment wins. Nothing relies on identity across threads.
             self._state = apply_move(self._parent_state, self._move)  # type: ignore[arg-type]
         return self._state
 
     def __repr__(self) -> str:
-        move = "root" if self._move is None else f"move={self._move}"
+        # `move` is how the node was made (None: built from a full state, as
+        # roots are), not its place in the tree.
         built = "built" if self._state is not None else "lazy"
         return (
-            f"Node({move}, state {built}, prior={self.prior:.4f}, N={self.visit_count},"
-            f" W={self.value_sum:.4f}, expanded={self.expanded})"
+            f"Node(move={self._move}, state {built}, prior={self.prior:.4g},"
+            f" N={self.visit_count}, W={self.value_sum:.4g}, expanded={self.expanded})"
         )
 
     @property

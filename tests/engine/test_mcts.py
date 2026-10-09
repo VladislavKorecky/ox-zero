@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 
 from ox_zero.engine import mcts
+from ox_zero.engine.evaluator import UniformEvaluator
 from ox_zero.engine.mcts import (
     Node,
     add_dirichlet_noise,
@@ -233,9 +234,8 @@ def test_expanding_a_terminal_node_raises():
 
 
 def uniform(state) -> np.ndarray:
-    # Mass on occupied cells too; `expand` renormalises over the legal ones.
-    cells = state.size * state.size
-    return np.full(cells, 1 / cells, dtype=np.float32)
+    # The production path: a legal-only policy, as evaluators produce.
+    return UniformEvaluator().evaluate([state])[0][0]
 
 
 def test_expansion_builds_no_child_boards(monkeypatch):
@@ -261,9 +261,25 @@ def test_a_lazy_child_state_is_the_parent_plus_its_move():
         assert child.state == apply_move(node.state, move)
 
 
-def test_a_node_needs_a_state_or_a_way_to_build_one():
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        pytest.param({}, id="nothing"),
+        pytest.param({"parent_state": "P"}, id="parent without move"),
+        pytest.param({"move": (0, 0)}, id="move without parent"),
+    ],
+)
+def test_a_lazy_node_needs_both_a_parent_state_and_a_move(kwargs):
+    if kwargs.get("parent_state") == "P":
+        kwargs["parent_state"] = initial_state(3)
     with pytest.raises(TypeError):
-        Node(None, prior=1.0)
+        Node(None, prior=1.0, **kwargs)
+
+
+def test_a_node_takes_a_state_or_lazy_arguments_not_both():
+    state = initial_state(3)
+    with pytest.raises(TypeError):
+        Node(state, prior=1.0, parent_state=state, move=(0, 0))
 
 
 def test_an_expansion_costs_far_less_than_its_child_boards():
