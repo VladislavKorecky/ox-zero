@@ -11,7 +11,7 @@ Everything importable lives in `src/ox_zero/`. `tests/` mirrors its layout.
 | Package | Owns | Status |
 |---------|------|--------|
 | `game` | OXOX rules (`rules.py`) and text notation for cells and positions (`notation.py`). Pure Python: no NumPy, no tensors. | Done (roadmap step 1) |
-| `engine` | Position analysis: the AlphaZero search and network. | Designed, not built (step 3): see [docs/design](design/README.md) |
+| `engine` | Position analysis: the AlphaZero search and network. | Built (step 3), not yet connected to the CLI: see [plan 03](plans/README.md) |
 | `training` | The self-play training pipeline. | Designed, not built (step 4): see [docs/design](design/README.md) |
 | `cli` | The `ox-zero` command: commands, rendering, JSON reports, the sandbox, and the engine port. | Done (step 2), on a placeholder engine |
 | `gui` | Graphical analysis interface. | Not started (step 5) |
@@ -80,9 +80,9 @@ The CLI needs analysis results, but it must not dictate how an engine works. So 
 
 ## Designed but not built
 
-The `engine` and `training` packages have a complete design in [docs/design](design/README.md): the search ([search.md](design/search.md)), the network ([network.md](design/network.md)), the training loop ([training.md](design/training.md)), the code structure ([engineering.md](design/engineering.md)), and how the engine connects to the CLI ([cli-integration.md](design/cli-integration.md)). Improvements deferred from version 1 are in [upgrades.md](design/upgrades.md), and constants that wait on experiments in [open-questions.md](design/open-questions.md).
+The `training` package has a complete design in [docs/design](design/README.md): the training loop ([training.md](design/training.md)) and its place in the code structure ([engineering.md](design/engineering.md)). The `engine` it drives is built (search, network, and the evaluator seam between them, designed in [search.md](design/search.md), [network.md](design/network.md) and [engineering.md](design/engineering.md)). Improvements deferred from version 1 are in [upgrades.md](design/upgrades.md), and constants that wait on experiments in [open-questions.md](design/open-questions.md).
 
-Two things in the current code are affected once the engine is built:
+Two things in the current code are affected once the engine is connected to the CLI ([cli-integration.md](design/cli-integration.md)):
 
 - `PlaceholderEngine` imitates only how the CLI expects results to *behave* (they arrive over time and settle). It is not a model for the real engine.
 - The `Engine` protocol in `cli/engine_port.py` stays the CLI's contract, reached through an adapter. It will gain one field: the engine's chosen move, because AlphaZero picks the most visited move rather than the highest-scoring one (see [cli-integration.md](design/cli-integration.md)).

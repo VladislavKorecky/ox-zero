@@ -9,26 +9,30 @@ src/ox_zero/
   game/          rules, notation                       (done)
   engine/
     encoding.py  State -> input planes; symmetries (transform planes and policies)
-    network.py   the residual tower, heads, NetworkConfig
-    evaluator.py the Evaluator protocol and its implementations (network, uniform, ...)
+    network.py   the residual tower, heads, NetworkConfig; alphazero_loss
+    evaluator.py the Evaluator protocol; UniformEvaluator, TableEvaluator (torch-free)
+    network_evaluator.py  NetworkEvaluator, select_device (the only torch on the search path)
     mcts.py      Node, PUCT selection, expansion, backup, tree reuse
-    search.py    the search loop as a generator; SearchConfig; analysis entry point
+    search.py    SearchConfig; SearchTree (two-phase select / expand-and-backup); analyse (snapshot generator)
   training/
     selfplay.py  lockstep self-play of many games; SelfPlayConfig
     replay.py    the replay buffer
-    trainer.py   the loss, the optimiser, one training step; TrainConfig
+    trainer.py   the optimiser, one training step; TrainConfig
     evaluate.py  checkpoint tournaments and Elo
     checkpoint.py save / load of weights + configs + optimiser + RNG state
     run.py       the generation loop, logging, resume
   cli/
     adapter.py   wraps engine.search into the CLI's Engine port (see cli-integration.md)
 scripts/
+  bench_search.py  simulations per second for a board size, evaluator and device
   train.py       entry point that builds configs and calls training.run
   plot.py        curves from metrics files (until a dashboard exists)
 checkpoints/     run outputs, gitignored
 ```
 
 One module per concept. `engine` never imports `training` or `cli`; `training` never imports `cli`.
+
+Two changes from the original layout, made in [plan 02](../plans/02-engine-search-network.md) (scope approved 2026-09-27): the loss lives in `engine/network.py` rather than `training/trainer.py`, because the network's main test ("memorise one batch") needs it; and `NetworkEvaluator` has its own module, because `import torch` costs about half a second and the search, which imports `evaluator.py`, must stay torch-free.
 
 ## The evaluator seam
 
@@ -86,3 +90,19 @@ Test-driven throughout: failing tests first, then implementation. What is a unit
 ## Performance plan
 
 Do not optimise before profiling. Expected hot spots, in the order we expect to hit them: Python overhead in the tree (selection over up to 144 children per node), `State` creation in `apply_move` (tuple copy of `S²` cells), and network inference latency at small batch sizes on `mps`. The deferred fixes for each are listed in [upgrades.md](upgrades.md#engineering). The lockstep design is chosen so that the network is never the bottleneck at batch sizes it can use.
+
+### Measured (2026-09-27)
+
+First data point, from `scripts/bench_search.py` with its defaults: analysis mode (batch size 1, root children evaluated up front), 800 simulations, the default 4×64 network with random weights, mean of 3 runs, on the author's 8 GB Apple Silicon laptop with torch 2.14. The position is a seeded random 4-move opening with no win in one. Nothing was optimised in response ([plan 02](../plans/02-engine-search-network.md)).
+
+| Board | Device | Simulations/s | Evaluate calls/s | Time in `evaluate` |
+|---|---|---|---|---|
+| 6x6 | cpu | 813 | 770 | 78% |
+| 6x6 | mps | 257 | 243 | 93% |
+| 12x12 | cpu | 284 | 284 | 38% |
+| 12x12 | mps | 166 | 166 | 66% |
+
+With `UniformEvaluator` instead of the network (pure tree cost), 6x6 runs at about 3,500 simulations/s, of which 4% is in `evaluate`.
+
+- **At batch size 1, `mps` is 1.7 to 3 times slower than `cpu`.** Each GPU call pays a fixed latency that a tiny batch cannot amortise. This is the third expected hot spot, and it confirms lockstep batching for self-play. For analysis, CPU is the faster device until virtual loss exists. No unsupported-op errors or fallback warnings appeared on `mps`.
+- **On 12x12 CPU, 62% of the time is the Python tree, not the network.** Expanding a node builds a `State` for each of its ~140 children: the `apply_move` hot spot predicted above. At 6x6 the network dominates instead.

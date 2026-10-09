@@ -27,7 +27,7 @@ Decisions that wait on data. The first implementation step, before any engine co
 | Simulations per self-play move | [search.md](search.md) | Paper: 800; likely far fewer on small boards | Open; start at 100–200 on 6x6 |
 | Games per generation, training steps per generation, buffer generations `K` | [training.md](training.md) | `K ≈ 10–20`; the rest budget-driven | Open; examples per game are now known (13, 17, 28 on 6x6, 8x8, 12x12) |
 | Tournament protocol (games, opponents, simulations, tie-breaking of deterministic players) | [training.md](training.md) | Undecided | Open |
-| Root-expansion evaluations and the `simulations` count | [cli-integration.md](cli-integration.md) | Not counted | Open (plan-level) |
+| Root-expansion evaluations and the `simulations` count | [cli-integration.md](cli-integration.md) | Not counted | **Decided in plan 02:** not counted; the first snapshot reports `simulations = 0` |
 
 ## Questions for the plan, not the design
 
