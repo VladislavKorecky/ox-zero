@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from enum import Enum
 from pathlib import Path
 from typing import Annotated, Any, NoReturn
 
@@ -33,15 +34,16 @@ from rich.progress import (
 from rich.text import Text
 
 from ox_zero.cli import render
+from ox_zero.cli.adapter import load_engine
 from ox_zero.cli.report import best_json, finished_best_json, report_json
 from ox_zero.cli.sandbox.app import run_sandbox
 from ox_zero.cli.sandbox.session import Session
 from ox_zero.cli.engine_port import Analysis, Engine
-from ox_zero.cli.placeholder import PlaceholderEngine, load_engine
 from ox_zero.game import Cell, PositionError, State, is_terminal, parse_cell, parse_position
 
-# AlphaZero's playout budget per move in the original paper. The placeholder engine
-# "runs" at ~2000 simulations per second, so this takes about 0.4 s.
+# AlphaZero's playout budget per move in the original paper. On 12x12 with a
+# network on CPU the search runs a few hundred simulations per second
+# (docs/design/engineering.md, "Measured"), so this takes a few seconds.
 DEFAULT_SIMULATIONS = 800
 
 USAGE_ERROR = 2
@@ -82,6 +84,26 @@ ModelOpt = Annotated[
 ]
 TopOpt = Annotated[int, typer.Option("--top", min=1, help="Number of candidate moves to list.")]
 SeedOpt = Annotated[int | None, typer.Option("--seed", help="Fix randomness for reproducible output.")]
+
+
+class Device(str, Enum):
+    """`--device` choices. An `Enum` makes Typer validate the value and list
+    the choices in `--help`."""
+
+    auto = "auto"
+    cpu = "cpu"
+    mps = "mps"
+    cuda = "cuda"
+
+
+DeviceOpt = Annotated[
+    Device,
+    typer.Option(
+        "--device",
+        help="Where the network runs; auto picks the best available."
+        " Ignored when no model is loaded.",
+    ),
+]
 JsonOpt = Annotated[bool, typer.Option("--json", help="Machine-readable output instead of text.")]
 
 
@@ -98,6 +120,7 @@ def analyze(
     model: ModelOpt = None,
     top: TopOpt = 3,
     seed: SeedOpt = None,
+    device: DeviceOpt = Device.cpu,
     json_output: JsonOpt = False,
 ) -> None:
     """Evaluate a position and score every legal move."""
@@ -114,7 +137,8 @@ def analyze(
             out.print(render.report(state, None, last_move=last_move))
         return
 
-    engine = _load(model, seed, err)
+    engine = _load(model, seed, device, err)
+    _check_engine_accepts(engine, state, err)
 
     if live:
         from ox_zero.cli.live import run_live
@@ -143,6 +167,7 @@ def best(
     simulations: SimulationsOpt = None,
     model: ModelOpt = None,
     seed: SeedOpt = None,
+    device: DeviceOpt = Device.cpu,
     json_output: JsonOpt = False,
 ) -> None:
     """Print only the engine's chosen move."""
@@ -159,7 +184,8 @@ def best(
             err.print(render.game_over(state))
         raise typer.Exit(code=1)
 
-    engine = _load(model, seed, err)
+    engine = _load(model, seed, device, err)
+    _check_engine_accepts(engine, state, err)
     analysis = _search_with_progress(engine, state, simulations or DEFAULT_SIMULATIONS, err)
     if json_output:
         _print_json(best_json(analysis))
@@ -175,6 +201,7 @@ def sandbox(
     model: ModelOpt = None,
     top: TopOpt = 3,
     seed: SeedOpt = None,
+    device: DeviceOpt = Device.cpu,
 ) -> None:
     """Interactive analysis screen: play moves, watch the engine think."""
     _, err = _consoles()
@@ -183,7 +210,12 @@ def sandbox(
         session = Session.from_tokens(tokens)
     except PositionError as error:
         _fail(err, str(error), tokens, error.token_index)
-    engine = _load(model, seed, err)
+    engine = _load(model, seed, device, err)
+    # The sandbox searches in a worker thread, where an error would tear down
+    # the screen. Every position it reaches has the start position's board
+    # size, so checking that one here, up front, covers the whole session.
+    if not is_terminal(session.state):
+        _check_engine_accepts(engine, session.state, err)
     run_sandbox(session, engine, top)
 
 
@@ -220,16 +252,32 @@ def _last_move(tokens: Sequence[str]) -> Cell | None:
     return None
 
 
-def _load(model: Path | None, seed: int | None, err: Console) -> Engine:
+def _load(model: Path | None, seed: int | None, device: Device, err: Console) -> Engine:
+    """Load the engine and print its notice (which model, or none), dimmed, on stderr."""
     try:
-        engine = load_engine(model, seed)
-    except FileNotFoundError as error:
+        engine, notice = load_engine(model, seed, device.value)
+    except (FileNotFoundError, ValueError) as error:
+        # Missing file, or a file that is not a readable checkpoint.
         _fail(err, str(error))
-    if isinstance(engine, PlaceholderEngine):
-        err.print(
-            "[dim]Using the placeholder engine (no trained model yet): scores are not meaningful.[/]"
-        )
+    # soft_wrap: never insert line breaks of our own. Off a terminal Rich
+    # would otherwise hard-wrap at 80 columns, splitting a long checkpoint
+    # path across lines in a log.
+    err.print(Text(notice, style="dim"), soft_wrap=True)
     return engine
+
+
+def _check_engine_accepts(engine: Engine, state: State, err: Console) -> None:
+    """Exit with a usage error if the engine cannot search this position.
+
+    `search()` validates eagerly and does no work until iterated, so calling
+    it and dropping the iterator is a free check. The failure that matters
+    here is a checkpoint trained for another board size; the position is
+    known not to be finished, so that is the only `ValueError` left.
+    """
+    try:
+        engine.search(state)
+    except ValueError as error:
+        _fail(err, str(error))
 
 
 def _fail(

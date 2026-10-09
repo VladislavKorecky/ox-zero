@@ -1,8 +1,9 @@
-"""A stand-in engine with no intelligence, and the CLI's engine loader.
+"""A stand-in engine with no intelligence: test tooling for the CLI.
 
-`PlaceholderEngine` lets the CLI run end to end before any real engine
-exists. Its numbers mean nothing. It only imitates how the CLI expects
-results to *behave*, so the interface can be exercised and tested:
+The CLI runs on the real search (`adapter.py`); `load_engine` never returns
+this. `PlaceholderEngine` is kept because the CLI's own tests want an engine
+that is fast, deterministic and fakes time. Its numbers mean nothing. It
+only imitates how the CLI expects results to *behave*:
 
 - Scores are noisy at first and settle as the search count grows, so live
   views visibly converge. (The noise shrinks as 1/sqrt(n), like the standard
@@ -11,9 +12,7 @@ results to *behave*, so the interface can be exercised and tested:
   refreshes behave realistically.
 - It is reproducible: the same seed and position give the same snapshots.
 
-None of this is a model for how a real engine should work inside. A real
-engine is connected by an adapter implementing `engine_port.Engine`, returned
-from `load_engine` below.
+None of this is a model for how a real engine should work inside.
 """
 
 from __future__ import annotations
@@ -22,9 +21,8 @@ import math
 import random
 import time
 from collections.abc import Iterator
-from pathlib import Path
 
-from ox_zero.cli.engine_port import Analysis, Engine
+from ox_zero.cli.engine_port import Analysis
 from ox_zero.game import Cell, State, is_terminal, legal_moves
 
 # Simulations between snapshots. Small enough for smooth progress bars, large
@@ -88,21 +86,6 @@ class PlaceholderEngine:
             yield Analysis(
                 value=scores[chosen], scores=scores, simulations=simulations, chosen=chosen
             )
-
-
-def load_engine(model: Path | None, seed: int | None) -> Engine:
-    """The engine the CLI should use, for the `--model` and `--seed` flags.
-
-    This is the one place a real engine gets connected. Until then it always
-    returns a `PlaceholderEngine`. A given path is still checked for
-    existence, so the `--model` flag already behaves as specified.
-
-    Raises:
-        FileNotFoundError: `model` was given but does not exist.
-    """
-    if model is not None and not model.exists():
-        raise FileNotFoundError(f"model checkpoint not found: {model}")
-    return PlaceholderEngine(seed=seed)
 
 
 def _base_score(state: State, move: Cell, rng: random.Random) -> float:

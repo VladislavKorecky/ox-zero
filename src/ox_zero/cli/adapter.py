@@ -4,14 +4,18 @@ Design: docs/design/cli-integration.md (the mapping, root expansion, loading
 a model). The port (`engine_port.py`) is what the CLI wants to show; the
 search (`ox_zero.engine.search.analyse`) is what the engine computes. This
 module translates one into the other and adds nothing of its own.
+
+It is also where the CLI gets its engine (`load_engine`): a trained network
+when a checkpoint exists, the same search with uniform priors otherwise.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 
-from ox_zero.cli.engine_port import Analysis
-from ox_zero.engine.evaluator import Evaluator
+from ox_zero.cli.engine_port import Analysis, Engine
+from ox_zero.engine.evaluator import Evaluator, UniformEvaluator
 from ox_zero.engine.search import ANALYSIS, SearchConfig, Snapshot, analyse
 from ox_zero.game import State
 
@@ -91,3 +95,59 @@ def _to_analysis(snapshot: Snapshot) -> Analysis:
         simulations=snapshot.simulations,
         chosen=snapshot.best,
     )
+
+
+NO_MODEL_NOTICE = (
+    "No trained model found: searching with uniform priors."
+    " Scores reflect search alone, not a learned evaluation."
+)
+
+
+def load_engine(
+    model: Path | None,
+    seed: int | None,
+    device: str = "cpu",
+    root: Path = Path("checkpoints"),
+) -> tuple[Engine, str]:
+    """The engine the CLI should use, and a one-line notice saying which.
+
+    - `model` given: load that checkpoint.
+    - Otherwise the newest checkpoint under `root` (by generation).
+    - Otherwise no model at all: the real search with `UniformEvaluator`,
+      i.e. plain PUCT with equal priors and value 0 at every leaf. It still
+      finds short tactics, because finished games inside the tree have exact
+      values; it just has no positional judgement.
+
+    `device` is `"auto"` (best available, `select_device()`) or a torch
+    device name. It only matters for a network; the uniform search never
+    touches torch and ignores it. The default is `cpu` because the CLI runs
+    the search at batch size 1, where the GPU's per-call overhead dominates
+    (docs/design/engineering.md, "Measured").
+
+    The notice is returned rather than printed so this module stays free of
+    any output concerns; the CLI prints it.
+
+    Raises:
+        FileNotFoundError: `model` was given but does not exist.
+    """
+    if model is not None and not model.exists():
+        raise FileNotFoundError(f"model checkpoint not found: {model}")
+
+    # Imported here, not at the top: these pull in torch (about half a
+    # second), which the no-model path never needs.
+    from ox_zero.training.checkpoint import latest_checkpoint
+
+    path = model if model is not None else latest_checkpoint(root)
+    if path is None:
+        return SearchEngine(UniformEvaluator(), seed=seed), NO_MODEL_NOTICE
+
+    from ox_zero.engine import network_evaluator
+    from ox_zero.training.checkpoint import load_checkpoint
+
+    # Called through the module so tests can substitute `select_device`.
+    torch_device = network_evaluator.select_device(None if device == "auto" else device)
+    checkpoint = load_checkpoint(path, torch_device)
+    evaluator = network_evaluator.NetworkEvaluator(checkpoint.network, torch_device)
+    size = checkpoint.size
+    notice = f"Loaded {path} (generation {checkpoint.generation}, {size}x{size})"
+    return SearchEngine(evaluator, size=size, seed=seed), notice
