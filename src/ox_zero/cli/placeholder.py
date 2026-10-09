@@ -82,7 +82,12 @@ class PlaceholderEngine:
                 move: _clamp(target[move] + spread * (direction[move] + wobble))
                 for move in moves
             }
-            yield Analysis(value=max(scores.values()), scores=scores, simulations=simulations)
+            # No visit counts here, so the "chosen" move is just the top score
+            # (ties in board order, matching `Analysis.top`).
+            chosen = max(scores, key=scores.__getitem__)
+            yield Analysis(
+                value=scores[chosen], scores=scores, simulations=simulations, chosen=chosen
+            )
 
 
 def load_engine(model: Path | None, seed: int | None) -> Engine:
