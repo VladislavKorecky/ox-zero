@@ -95,9 +95,13 @@ class Node:
         parent_state: State | None = None,
         move: Cell | None = None,
     ) -> None:
-        lazy = parent_state is not None or move is not None
-        if (state is None) == (not lazy) or (lazy and (parent_state is None or move is None)):
-            raise TypeError("a Node takes either a state, or both a parent_state and a move")
+        # Exactly one way to know the position: a state, or a parent state
+        # plus the move from it.
+        if state is not None:
+            if parent_state is not None or move is not None:
+                raise TypeError("a Node takes either a state, or a parent_state and a move")
+        elif parent_state is None or move is None:
+            raise TypeError("a lazy Node needs both a parent_state and a move")
         self._state = state
         self._parent_state = parent_state
         self._move = move
@@ -123,8 +127,9 @@ class Node:
         return self._state
 
     def __repr__(self) -> str:
-        # `move` is how the node was made (None: built from a full state, as
-        # roots are), not its place in the tree.
+        # `move` records how the node was made (None: from a full state), not
+        # its place in the tree: a child promoted to root by `reuse_subtree`
+        # keeps its move, and may still be lazy.
         built = "built" if self._state is not None else "lazy"
         return (
             f"Node(move={self._move}, state {built}, prior={self.prior:.4g},"

@@ -261,25 +261,23 @@ def test_a_lazy_child_state_is_the_parent_plus_its_move():
         assert child.state == apply_move(node.state, move)
 
 
+EMPTY_3X3 = initial_state(3)
+
+
 @pytest.mark.parametrize(
-    "kwargs",
+    "state, kwargs",
     [
-        pytest.param({}, id="nothing"),
-        pytest.param({"parent_state": "P"}, id="parent without move"),
-        pytest.param({"move": (0, 0)}, id="move without parent"),
+        pytest.param(None, {}, id="nothing"),
+        pytest.param(None, {"parent_state": EMPTY_3X3}, id="parent without move"),
+        pytest.param(None, {"move": (0, 0)}, id="move without parent"),
+        pytest.param(EMPTY_3X3, {"parent_state": EMPTY_3X3, "move": (0, 0)}, id="state and both"),
+        pytest.param(EMPTY_3X3, {"parent_state": EMPTY_3X3}, id="state and parent"),
+        pytest.param(EMPTY_3X3, {"move": (0, 0)}, id="state and move"),
     ],
 )
-def test_a_lazy_node_needs_both_a_parent_state_and_a_move(kwargs):
-    if kwargs.get("parent_state") == "P":
-        kwargs["parent_state"] = initial_state(3)
+def test_a_node_takes_a_state_or_a_parent_state_and_move(state, kwargs):
     with pytest.raises(TypeError):
-        Node(None, prior=1.0, **kwargs)
-
-
-def test_a_node_takes_a_state_or_lazy_arguments_not_both():
-    state = initial_state(3)
-    with pytest.raises(TypeError):
-        Node(state, prior=1.0, parent_state=state, move=(0, 0))
+        Node(state, prior=1.0, **kwargs)
 
 
 def test_an_expansion_costs_far_less_than_its_child_boards():
