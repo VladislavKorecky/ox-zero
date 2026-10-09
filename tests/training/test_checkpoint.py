@@ -184,6 +184,17 @@ def test_save_leaves_no_temporary_files(tmp_path):
     assert [p.name for p in tmp_path.iterdir()] == ["gen_000.pt"]
 
 
+def test_saved_file_has_the_usual_permissions(tmp_path):
+    # The temporary file is created owner-only (0600); the saved checkpoint
+    # must end up with the mode a plain write would give it (0666 minus the
+    # umask), or other users on a shared machine cannot load it.
+    umask = os.umask(0)
+    os.umask(umask)
+    path = tmp_path / "gen_000.pt"
+    save_checkpoint(path, tiny_network(), generation=0)
+    assert path.stat().st_mode & 0o777 == 0o666 & ~umask
+
+
 @pytest.mark.parametrize(
     "content",
     [
@@ -212,6 +223,14 @@ def test_an_architecture_mismatch_is_a_value_error(tmp_path):
     torch.save(data, path)
     with pytest.raises(ValueError, match="gen_000.pt"):
         load_checkpoint(path)
+
+
+@pytest.mark.skipif(torch.cuda.is_available(), reason="needs a machine without CUDA")
+def test_an_unavailable_device_is_a_value_error(tmp_path):
+    path = tmp_path / "gen_000.pt"
+    save_checkpoint(path, tiny_network(), generation=0)
+    with pytest.raises(ValueError, match="cuda"):
+        load_checkpoint(path, torch.device("cuda"))
 
 
 def test_loads_onto_the_requested_device(tmp_path):

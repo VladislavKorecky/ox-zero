@@ -358,6 +358,16 @@ def test_device_auto_asks_select_device(workdir, monkeypatch):
 
 
 @pytest.mark.real_engine
+@pytest.mark.skipif(torch.cuda.is_available(), reason="needs a machine without CUDA")
+def test_unavailable_device_is_a_usage_error(workdir):
+    path = write_checkpoint(workdir / "model.pt")
+    result = run("best", *POSITION, "--model", str(path), "--device", "cuda")
+    assert result.exit_code == 2
+    assert "cuda" in result.stderr
+    assert "Traceback" not in result.output
+
+
+@pytest.mark.real_engine
 def test_invalid_device_is_rejected_and_help_lists_the_choices(workdir):
     assert run("best", *POSITION, "--device", "tpu").exit_code == 2
     help_text = run("best", "--help").stdout

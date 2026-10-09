@@ -23,6 +23,7 @@ the loader, never pickled as objects.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import os
 import re
@@ -133,10 +134,21 @@ def save_checkpoint(
     try:
         with os.fdopen(fd, "wb") as file:
             torch.save(data, file)
+            # `mkstemp` creates the file owner-only (0600) and the rename
+            # keeps that mode; give it the mode a plain `open` would have
+            # (0666 minus the umask), so other users can still read it.
+            os.fchmod(file.fileno(), 0o666 & ~_umask())
+            # Push the bytes to disk before the rename. Without this, after a
+            # power cut the rename can be on disk while the data is not,
+            # leaving exactly the truncated file the rename exists to avoid.
+            file.flush()
+            os.fsync(file.fileno())
         os.replace(temporary, path)
     except BaseException:
         # BaseException, not Exception: clean up on Ctrl-C too, then re-raise.
-        os.unlink(temporary)
+        # A failing cleanup must not replace the error that caused it.
+        with contextlib.suppress(OSError):
+            os.unlink(temporary)
         raise
 
 
@@ -146,7 +158,8 @@ def load_checkpoint(path: Path, device: torch.device | None = None) -> Checkpoin
     Raises:
         ValueError: The file is not a checkpoint this code can read: an
             unknown `format_version`, missing keys, weights that do not fit
-            the stored architecture, or not a checkpoint at all. Whatever
+            the stored architecture, not a checkpoint at all, or a `device`
+            this machine does not have. Whatever
             the cause, one exception type with the path in the message, so
             the CLI can report it cleanly.
     """
@@ -190,7 +203,14 @@ def load_checkpoint(path: Path, device: torch.device | None = None) -> Checkpoin
         # missing, unexpected, or wrongly shaped weights.
         raise ValueError(f"{path}: malformed checkpoint ({error})") from error
 
-    network.to(device if device is not None else torch.device("cpu"))
+    target = device if device is not None else torch.device("cpu")
+    try:
+        network.to(target)
+    except (RuntimeError, AssertionError) as error:
+        # A device this machine does not have. torch raises AssertionError
+        # ("Torch not compiled with CUDA enabled") or RuntimeError depending
+        # on the backend.
+        raise ValueError(f"cannot load {path} onto device {target}: {error}") from error
     network.eval()
     return checkpoint
 
@@ -212,11 +232,22 @@ def latest_checkpoint(root: Path) -> Path | None:
         # a link whose target was deleted, is skipped instead of crashing
         # `stat` (or being returned and failing later in `torch.load`).
         if match and path.is_file():
-            candidates.append((int(match.group(1)), path.stat().st_mtime, path))
+            try:
+                modified = path.stat().st_mtime
+            except OSError:
+                continue  # deleted between the listing and now (a run pruning old files)
+            candidates.append((int(match.group(1)), modified, path))
     if not candidates:
         return None
     # Tuples compare element by element: generation first, then mtime.
     return max(candidates, key=lambda c: (c[0], c[1]))[2]
+
+
+def _umask() -> int:
+    """The process's umask. There is no read-only call: set it, then restore it."""
+    mask = os.umask(0)
+    os.umask(mask)
+    return mask
 
 
 def _to_cpu(value: Any) -> Any:
