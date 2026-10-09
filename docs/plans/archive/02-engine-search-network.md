@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| Status | Implemented on `feat/engine-search-network`, in review |
+| Status | Implemented and merged (PR #12, 2026-10-09) |
 | Branches | Plan: `plan/engine-search-network`. Implementation: `feat/engine-search-network`. |
-| Design references | [search.md](../design/search.md) (every search rule and constant), [network.md](../design/network.md) (encoding, tower, heads, loss, symmetries), [engineering.md](../design/engineering.md) (module layout, evaluator seam, tree representation, testing), [cli-integration.md](../design/cli-integration.md) (what the analysis generator must yield, read but not implemented here) |
-| Depends on | [Plan 01](archive/01-game-experiments.md): `ox_zero.game` including `Solver`. |
+| Design references | [search.md](../../design/search.md) (every search rule and constant), [network.md](../../design/network.md) (encoding, tower, heads, loss, symmetries), [engineering.md](../../design/engineering.md) (module layout, evaluator seam, tree representation, testing), [cli-integration.md](../../design/cli-integration.md) (what the analysis generator must yield, read but not implemented here) |
+| Depends on | [Plan 01](01-game-experiments.md): `ox_zero.game` including `Solver`. |
 
 ## Goal
 
@@ -28,7 +28,7 @@ Nothing gets trained and nothing is connected to the CLI. The proof that this pl
 
 - The CLI: no adapter, no change to `cli/engine_port.py`, no `--model` loading. `PlaceholderEngine` stays. That is plan 03.
 - Checkpoints, self-play driver, replay buffer, trainer, tournaments, `scripts/train.py`. That is plan 04. The per-tree self-play primitives (noise, temperature, subtree reuse, the two-phase API) *are* in scope because they live in the tree.
-- Every item in [upgrades.md](../design/upgrades.md): no MCTS-Solver, no first-play urgency, no evaluation cache, no virtual loss, no global pooling, no symmetry at inference. The search is the paper's baseline on purpose.
+- Every item in [upgrades.md](../../design/upgrades.md): no MCTS-Solver, no first-play urgency, no evaluation cache, no virtual loss, no global pooling, no symmetry at inference. The search is the paper's baseline on purpose.
 - Performance work beyond the benchmark script. Measure, do not optimise. No `torch.compile`, no array tree.
 - The `training` and `gui` packages.
 
@@ -38,18 +38,18 @@ Code-level choices the design left to the plan, with the reason. Vláďa approve
 
 | Decision | Choice | Why |
 |---|---|---|
-| Evaluator return types | NumPy `float32` arrays: policies `[B, S²]`, values `[B]`. | The search stays torch-free, as [engineering.md](../design/engineering.md#the-evaluator-seam) wants. `NetworkEvaluator` is the only module that converts. |
+| Evaluator return types | NumPy `float32` arrays: policies `[B, S²]`, values `[B]`. | The search stays torch-free, as [engineering.md](../../design/engineering.md#the-evaluator-seam) wants. `NetworkEvaluator` is the only module that converts. |
 | Encoding output type | NumPy `float32` `[3, S, S]`; the network evaluator stacks and converts. | Same reason. `network.md` says "tensor" loosely; NumPy is the torch-free reading. |
 | Where the loss lives | `engine/network.py`, not `training/trainer.py`. | The "memorise one batch" test is the main proof the network works, and it needs the loss. Approved 2026-09-27; step 9 updates the layout table in `engineering.md`. |
 | `N(s)` in PUCT | The parent node's own `visit_count`, incremented on every node of the backed-up path, as in the paper's pseudocode. | Hand-computable and matches the reference. It equals `Σ_a N(s,a)` at the root and `Σ_a N(s,a) + 1` at expanded non-root nodes (the extra one is the visit that expanded the node). `search.md` writes `N(s) = Σ_a N(s,a)`; step 9 adds the clarification there. |
 | Root value | `Σ_a W(root,a) / Σ_a N(root,a)` over the root's children, `0.0` with no visits. | The root node's own `value_sum` is accumulated from the perspective of the player who moved *into* the root, i.e. the opponent of the side to move, so `root.q` has the wrong sign. Compute over children and say so in a comment. |
-| Root-expansion evaluations and `simulations` | Not counted. The first analysis snapshot has `simulations = 0`. | The design's own recommendation in [cli-integration.md](../design/cli-integration.md#every-legal-move-gets-a-genuine-score). |
+| Root-expansion evaluations and `simulations` | Not counted. The first analysis snapshot has `simulations = 0`. | The design's own recommendation in [cli-integration.md](../../design/cli-integration.md#every-legal-move-gets-a-genuine-score). |
 | Expanding the root | Setup, not a simulation: it expands without backing anything up and adds no visits. Root noise is applied right after. | The pseudocode's `evaluate(root)` then `add_exploration_noise(root)` before the loop. |
 | Simulations per move after subtree reuse | `n` fresh simulations per move regardless of visits inherited from the reused subtree. | Simplest bookkeeping; the inherited counts are a warm start, not part of the budget. `SearchTree.simulations` resets to 0 on `play`. |
 | Temperature cutoff for sizes not in the table | Table `{4: 2, 6: 3, 8: 4, 12: 7}` from `search.md`; other sizes fall back to `max(1, round(S / 2))`, which gives 2, 3, 4, 6 on the tabulated sizes. | Some fallback is needed for 3x3 and 5x5 tests. Nothing was measured for them; the fallback is labelled provisional in code. |
 | Symmetry indexing | `k` in `0..7`: `k % 4` quarter-turn rotations after an optional left-right flip when `k >= 4`. `inverse(k) = k` for `k >= 4`, `(-k) % 4` otherwise. | Every reflection of the square is its own inverse, so the inverse is a one-liner and the test can check it. |
 | Ties in selection | Board order: the first maximal child wins. | `Node.children` is filled from `legal_moves`, which is in board order, and `max` keeps the first maximum. Makes hand-computed tests deterministic. |
-| Randomness | One `numpy.random.Generator` per `SearchTree`, passed in; `None` means `default_rng()`. Torch's RNG is used only inside the network. | [engineering.md](../design/engineering.md#devices-and-determinism): every source of randomness is seedable and later checkpointable. |
+| Randomness | One `numpy.random.Generator` per `SearchTree`, passed in; `None` means `default_rng()`. Torch's RNG is used only inside the network. | [engineering.md](../../design/engineering.md#devices-and-determinism): every source of randomness is seedable and later checkpointable. |
 
 ## Conventions that apply
 
@@ -189,7 +189,7 @@ Tests:
 5. **Planes, policies and cells agree.** For every `k` and every cell `c`: `transform_policy(onehot(c), k)` is one-hot at `transform_cell(c, k, S)`. And for a random move list, `encode(play(transformed moves)) == transform_planes(encode(play(moves)), k)`.
 6. **Contiguity.** The result of `transform_planes` is C-contiguous (`torch.from_numpy` rejects negative strides, which `np.flip` and `np.rot90` produce as views).
 
-Implementation notes: `transform_planes` is `np.flip` on the last axis when `k >= 4`, then `np.rot90` with `k % 4` turns on the last two axes, then `np.ascontiguousarray`. Derive `transform_cell` from the array operation (transform an index grid `np.arange(S²).reshape(S, S)` and look the cell up) rather than writing coordinate formulas by hand, so the two can never disagree. `transform_policy` reshapes the last axis to `[S, S]`, reuses `transform_planes`, and flattens back: a policy is a scalar field over the board, so the same spatial map applies. Explain the D4 group and the mark-swap symmetry that the relative encoding already absorbs ([network.md](../design/network.md#symmetries)).
+Implementation notes: `transform_planes` is `np.flip` on the last axis when `k >= 4`, then `np.rot90` with `k % 4` turns on the last two axes, then `np.ascontiguousarray`. Derive `transform_cell` from the array operation (transform an index grid `np.arange(S²).reshape(S, S)` and look the cell up) rather than writing coordinate formulas by hand, so the two can never disagree. `transform_policy` reshapes the last axis to `[S, S]`, reuses `transform_planes`, and flattens back: a policy is a scalar field over the board, so the same spatial map applies. Explain the D4 group and the mark-swap symmetry that the relative encoding already absorbs ([network.md](../../design/network.md#symmetries)).
 
 ## Step 2: uniform and table evaluators (`tests/engine/test_evaluator.py`, then the torch-free half of `evaluator.py`)
 
@@ -207,7 +207,7 @@ Tests, each on hand-built `Node` trees or tiny boards with `UniformEvaluator` or
 1. **`puct_score` by hand.** With `parent_visits = 100`, `N(s,a) = 10`, `P = 0.5`, `Q = 0.2`, `c_base = 19652`, `c_init = 1.25`: `C = log((1 + 100 + 19652) / 19652) + 1.25`, `U = C · 0.5 · √100 / 11`, score `= 0.2 + U`. Write the arithmetic in the test and assert to `1e-9`. Also: an unvisited child has `Q = 0`, and with `parent_visits = 0` every child scores exactly 0 (so the first selection is by board order).
 2. **Selection follows priors when values are equal.** A 2x2 board (no line fits, so every value is 0) with a `TableEvaluator` giving the root priors `(0.7, 0.2, 0.06, 0.04)`: since `Q = 0` everywhere and `C · √N(s)` is common to all children, each selection maximises `P / (1 + N)`. Run 10 selections with `select_child` and hand-derive the visit sequence in comments (`a, a, a, b, a, a, b, a, c, a` or whatever the arithmetic gives; compute it, do not guess). Assert the final counts.
 3. **Selection prefers value over prior.** Same tree, but a scripted evaluation gives one low-prior child `Q = +0.8` after its first visit; within a few more selections it is chosen despite the lower prior. Assert it has the most visits after 20 selections.
-4. **Backup signs.** A hand-built path of three nodes (root, child, grandchild). `backup(path, +1.0)`: the grandchild (leaf) gets `W = -1`, the child `W = +1`, the root `W = -1`; every `N` is 1. Explain in the test why the leaf's edge receives the negated value ([search.md](../design/search.md#3-backup)).
+4. **Backup signs.** A hand-built path of three nodes (root, child, grandchild). `backup(path, +1.0)`: the grandchild (leaf) gets `W = -1`, the child `W = +1`, the root `W = -1`; every `N` is 1. Explain in the test why the leaf's edge receives the negated value ([search.md](../../design/search.md#3-backup)).
 5. **Terminal values.** `terminal_value` is `-1.0` after a completed line and `0.0` on a full 2x2 board; raises (or asserts) on a non-terminal state.
 6. **Expansion.** `expand` on a position with 5 legal moves and a policy that has mass on an illegal cell: children exist for exactly the legal moves, in board order, priors renormalised over legal moves only and summing to 1. Expanding a terminal node raises.
 7. **Root value.** Hand-built root with two visited children: `root_value` equals `(W_a + W_b) / (N_a + N_b)`, and equals `-root.q` when the root itself was backed up through the same path (documents the sign trap). Empty root gives `0.0`.
@@ -249,8 +249,8 @@ Solver-fixture tests. These use `UniformEvaluator` and a session-scoped `Solver(
    | `(1,1), (2,2), (0,0)` | `X___ / _X__ / __O_ / ____` | `(3,3)` |
    | `(0,0), (0,1), (2,3)` | `XO__ / ____ / ___X / ____` | `(0,2)` |
 
-   The test first asserts the solver agrees (`value == 1`, `best_moves == [move]`) so a rules change cannot silently invalidate the fixture. Then after 1000 simulations `best == move`. In the scratch run the optimal move took about 90% of the visits at every budget from 200 up. Do **not** assert the value sign here: the root value stays near 0 on wins this deep because plain averaging never propagates a proof ([upgrades.md](../design/upgrades.md#search), MCTS-Solver). Write that down in the test; it is the baseline that upgrade will be measured against.
-8. **The empty 3x3.** Eight moves draw and the centre loses ([open-questions.md](../design/open-questions.md#exact-solutions)). After 2000 simulations `best != (1,1)` and `visits[(1,1)]` is the smallest.
+   The test first asserts the solver agrees (`value == 1`, `best_moves == [move]`) so a rules change cannot silently invalidate the fixture. Then after 1000 simulations `best == move`. In the scratch run the optimal move took about 90% of the visits at every budget from 200 up. Do **not** assert the value sign here: the root value stays near 0 on wins this deep because plain averaging never propagates a proof ([upgrades.md](../../design/upgrades.md#search), MCTS-Solver). Write that down in the test; it is the baseline that upgrade will be measured against.
+8. **The empty 3x3.** Eight moves draw and the centre loses ([open-questions.md](../../design/open-questions.md#exact-solutions)). After 2000 simulations `best != (1,1)` and `visits[(1,1)]` is the smallest.
 9. **Random 3x3 agreement (property).** Sample 30 reachable non-terminal 3x3 positions with `random.Random(0)` whose optimal moves are a strict subset of at least 3 legal moves. After 500 simulations `best` is in `solver.best_moves`. Scratch result: 0 failures in 60. If the real search fails more than one, report rather than tune.
 
 Keep the whole engine suite under about 30 seconds on CPU. The deep fixtures cost roughly 0.1 s each in the scratch run.
@@ -261,14 +261,14 @@ Use a tiny config in tests (`NetworkConfig(blocks=2, filters=8, value_hidden=16)
 
 Tests:
 
-1. **Shapes.** For sizes 3, 6, 12 and batch 5: logits `[B, S²]`, values `[B]`, values in `[-1, 1]`, all `float32`. The default config on 12x12 has a receptive field covering the board (assert nothing; note the 9-layer arithmetic from [network.md](../design/network.md#kernel-size) in a comment).
+1. **Shapes.** For sizes 3, 6, 12 and batch 5: logits `[B, S²]`, values `[B]`, values in `[-1, 1]`, all `float32`. The default config on 12x12 has a receptive field covering the board (assert nothing; note the 9-layer arithmetic from [network.md](../../design/network.md#kernel-size) in a comment).
 2. **Eval mode is deterministic.** In `eval()` under `torch.inference_mode`, the same batch twice gives identical outputs; in `train()` mode BatchNorm uses batch statistics, so a batch of size 1 raises or differs. Pin whichever behaviour the code has and explain BatchNorm's two modes.
 3. **Loss by hand.** Batch of one, 2x2 board: chosen logits, `legal` masking one cell that has the *largest* logit, one-hot `pi` on a legal cell, `z = 1`, `v = 0.5`. Expected `value_loss = 0.25`, `policy_loss = -log_softmax(masked logits)[a]` computed in the test with the masked cell excluded from the softmax; `total` is their sum. Asserting with the large illegal logit proves masking happened before the softmax.
 4. **No NaN from masked cells.** `pi` is zero on illegal cells and the masked log-probabilities are `-inf`; a naive `(pi * log_p).sum()` gives `0 · -inf = NaN`. Assert the loss is finite. Implementation: zero the masked entries of `log_p` (`masked_fill`) before multiplying, or use `torch.where`.
 5. **Memorise one batch.** 16 random 6x6 positions, `pi` one-hot on a random legal move, `z` random in `{-1, 0, 1}`, AdamW `lr = 1e-2`, no weight decay, up to 300 steps in `train()` mode: `policy_loss < 0.05` and `value_loss < 0.01`. One-hot targets are chosen so the cross-entropy floor is 0; with soft targets the floor is the entropy of `pi`, which the comment should say. Seed torch. If it does not converge, that is a bug, not a tuning problem.
 6. **Config is recorded.** `Network(6, cfg).size == 6` and `.config == cfg`, so a checkpoint (plan 04) can rebuild the architecture from the saved config.
 
-Implementation follows [network.md](../design/network.md) exactly: stem, `blocks` residual blocks, the two heads, `tanh` on the value. Weight decay is not part of the loss (AdamW applies it), so `alphazero_loss` has no regularisation term; say why in the docstring.
+Implementation follows [network.md](../../design/network.md) exactly: stem, `blocks` residual blocks, the two heads, `tanh` on the value. Weight decay is not part of the loss (AdamW applies it), so `alphazero_loss` has no regularisation term; say why in the docstring.
 
 ## Step 7: the network evaluator and device selection (`tests/engine/test_network_evaluator.py`, then the torch half of `evaluator.py`)
 
@@ -287,7 +287,7 @@ Implementation: `encode_batch` → `torch.from_numpy` → `.to(device)` → `net
 
 Not test-driven. Arguments: `--size 6`, `--simulations 800`, `--evaluator network|uniform` (default `network`), `--blocks 4`, `--filters 64`, `--device auto|cpu|mps|cuda`, `--repeats 3`, `--seed 0`, `--position` (optional move list; default a fixed seeded random opening of 4 moves so the root is not the empty board). It runs `analyse` to the cap, and prints the parameters, the resolved device, simulations per second (mean over repeats), evaluator calls per second, and the fraction of wall time inside `evaluate`. Print a Markdown row so results can be pasted into the PR.
 
-Run it once on 6x6 and once on 12x12 with the default network on this laptop, with `--device cpu` and `--device mps`, and put the four rows in the PR description. This is the first data point for [engineering.md](../design/engineering.md#performance-plan); nothing is optimised in response to it in this plan.
+Run it once on 6x6 and once on 12x12 with the default network on this laptop, with `--device cpu` and `--device mps`, and put the four rows in the PR description. This is the first data point for [engineering.md](../../design/engineering.md#performance-plan); nothing is optimised in response to it in this plan.
 
 Add the script to `scripts/README.md` (a new section, since it is not a game experiment) with one usage line.
 

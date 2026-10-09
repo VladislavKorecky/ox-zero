@@ -32,7 +32,7 @@ checkpoints/     run outputs, gitignored
 
 One module per concept. `engine` never imports `training` or `cli`; `training` never imports `cli`.
 
-Two changes from the original layout, made in [plan 02](../plans/02-engine-search-network.md) (scope approved 2026-09-27): the loss lives in `engine/network.py` rather than `training/trainer.py`, because the network's main test ("memorise one batch") needs it; and `NetworkEvaluator` has its own module, because `import torch` costs about half a second and the search, which imports `evaluator.py`, must stay torch-free.
+Two changes from the original layout, made in [plan 02](../plans/archive/02-engine-search-network.md) (scope approved 2026-09-27): the loss lives in `engine/network.py` rather than `training/trainer.py`, because the network's main test ("memorise one batch") needs it; and `NetworkEvaluator` has its own module, because `import torch` costs about half a second and the search, which imports `evaluator.py`, must stay torch-free.
 
 ## The evaluator seam
 
@@ -93,7 +93,7 @@ Do not optimise before profiling. Expected hot spots, in the order we expect to 
 
 ### Measured (2026-09-27)
 
-First data point, from `scripts/bench_search.py` with its defaults: analysis mode (batch size 1, root children evaluated up front), 800 simulations, the default 4×64 network with random weights, mean of 3 runs, on the author's 8 GB Apple Silicon laptop with torch 2.14. The position is a seeded random 4-move opening with no win in one. Nothing was optimised in response ([plan 02](../plans/02-engine-search-network.md)).
+First data point, from `scripts/bench_search.py` with its defaults: analysis mode (batch size 1, root children evaluated up front), 800 simulations, the default 4×64 network with random weights, mean of 3 runs, on the author's 8 GB Apple Silicon laptop with torch 2.14. The position is a seeded random 4-move opening with no win in one. Nothing was optimised in response ([plan 02](../plans/archive/02-engine-search-network.md)).
 
 | Board | Device | Simulations/s | Evaluate calls/s | Time in `evaluate` |
 |---|---|---|---|---|
