@@ -13,7 +13,7 @@ def analysis_for(state) -> Analysis:
     scores = {move: 0.1 for move in legal_moves(state)}
     scores[(5, 7)] = 0.47
     scores[(4, 6)] = 0.38
-    return Analysis(value=0.47, scores=scores, simulations=800)
+    return Analysis(value=0.47, scores=scores, simulations=800, chosen=(5, 7))
 
 
 def test_report_has_the_readme_shape():
@@ -52,7 +52,8 @@ def test_finished_game_report():
 
 def test_scores_are_rounded_for_readability():
     scores = {move: 0.123456789 for move in legal_moves(POSITION)}
-    report = report_json(POSITION, Analysis(0.123456789, scores, 1), top_n=1)
+    analysis = Analysis(0.123456789, scores, 1, chosen=legal_moves(POSITION)[0])
+    report = report_json(POSITION, analysis, top_n=1)
     assert report["value"] == 0.1235
 
 

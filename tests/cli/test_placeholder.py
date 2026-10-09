@@ -82,6 +82,14 @@ def test_scores_settle_as_the_search_deepens():
     assert late < early / 3
 
 
+@pytest.mark.parametrize("seed", [0, 1, 2])
+@pytest.mark.parametrize("moves", [[], [(5, 5), (6, 6), (5, 6)], [(0, 0), (11, 11)]])
+def test_chosen_is_the_top_scoring_move(seed, moves):
+    # The placeholder has no visit counts, so its "choice" is its top score.
+    for snapshot in fast_engine(seed).search(play(moves), max_simulations=300):
+        assert snapshot.chosen == snapshot.top(1)[0][0]
+
+
 def test_searching_a_finished_game_is_an_error():
     finished = play([(5, 5), (6, 6), (5, 7), (5, 6)])
     with pytest.raises(ValueError):

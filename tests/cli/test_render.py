@@ -20,7 +20,8 @@ def plain(renderable) -> str:
 def flat_analysis(state, score: float = 0.1, overrides=None) -> Analysis:
     scores = {move: score for move in legal_moves(state)}
     scores.update(overrides or {})
-    return Analysis(value=max(scores.values()), scores=scores, simulations=800)
+    top_move = max(scores, key=scores.__getitem__)
+    return Analysis(value=scores[top_move], scores=scores, simulations=800, chosen=top_move)
 
 
 def style_at(text, offset):

@@ -67,7 +67,7 @@ class InterruptedEngine:
 
     def search(self, state, max_simulations=None):
         for n in (100, 200):
-            yield Analysis(value=0.5, scores={(0, 0): 0.5}, simulations=n)
+            yield Analysis(value=0.5, scores={(0, 0): 0.5}, simulations=n, chosen=(0, 0))
         raise KeyboardInterrupt
 
 
