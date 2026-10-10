@@ -1,4 +1,8 @@
-"""Shared fixtures for the engine tests."""
+"""Fixtures shared by every test package (engine, training, ...).
+
+A conftest.py is visible only to tests in its own directory and below, so
+fixtures needed by more than one package live here at the root of tests/.
+"""
 
 import pytest
 
