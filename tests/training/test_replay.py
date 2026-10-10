@@ -157,6 +157,18 @@ def test_k_zero_is_identity() -> None:
     np.testing.assert_array_equal(out.z, batch.z)
 
 
+@pytest.mark.parametrize("bad", [-1, 8])
+def test_transform_batch_rejects_out_of_range_symmetries(bad: int) -> None:
+    state = play([], size=4)
+    batch = Batch(
+        planes=np.repeat(encode(state)[None], 2, axis=0),
+        pi=np.full((2, 16), 1 / 16, dtype=np.float32),
+        z=np.zeros(2, dtype=np.float32),
+    )
+    with pytest.raises(ValueError):
+        transform_batch(batch, ks=np.array([0, bad]))
+
+
 def test_augment_uses_several_symmetries(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[np.ndarray] = []
     real = replay_module.transform_batch
@@ -290,6 +302,160 @@ def test_drop_above() -> None:
     buffer.drop_above(1)
     assert buffer.generations == [1]
     assert len(buffer) == 1
+
+
+def test_drop_above_keeps_the_boundary_and_handles_no_op() -> None:
+    buffer = ReplayBuffer(size=3, generations=5)
+    for generation in (2, 3, 4):
+        buffer.add(tagged(3, generation, float(generation)), generation=generation)
+    buffer.drop_above(3)  # 3 itself stays: "above" is strict
+    assert buffer.generations == [2, 3]
+    buffer.drop_above(10)  # nothing above 10: no change
+    assert buffer.generations == [2, 3]
+    # Sampling sees only what is held after the drop (no stale cached rows).
+    batch = buffer.sample(200, np.random.default_rng(0))
+    assert set(np.unique(batch.z)) == {2.0, 3.0}
+    buffer.drop_above(0)
+    assert buffer.generations == [] and len(buffer) == 0
+
+
+def test_drop_above_then_re_added_generation_is_saved(tmp_path) -> None:
+    # Resume in memory: generation 6 is forgotten and played again. The
+    # re-run's examples must replace the stale gen_006.npz on the next save.
+    directory = tmp_path / "buffer"
+    buffer = ReplayBuffer(size=3, generations=5)
+    buffer.add(tagged(3, 2, 5.0), generation=5)
+    buffer.add(tagged(3, 2, 6.0), generation=6)
+    buffer.save(directory)
+
+    buffer.drop_above(5)
+    buffer.add(tagged(3, 3, 66.0), generation=6)
+    buffer.save(directory)
+
+    loaded = ReplayBuffer.load(directory, size=3, generations=5)
+    assert loaded.generations == [5, 6]
+    assert len(loaded) == 2 + 3
+    batch = loaded.sample(300, np.random.default_rng(0))
+    assert set(np.unique(batch.z)) == {5.0, 66.0}
+
+
+# --- Saving generations that changed after their file was written -------------
+
+
+def test_save_rewrites_a_generation_that_grew(tmp_path) -> None:
+    directory = tmp_path / "buffer"
+    buffer = ReplayBuffer(size=3, generations=2)
+    buffer.add(tagged(3, 5, 1.0), generation=5)
+    buffer.save(directory)
+    buffer.add(tagged(3, 5, 2.0), generation=5)  # a second batch of the same generation
+    buffer.save(directory)
+
+    loaded = ReplayBuffer.load(directory, size=3, generations=2)
+    assert len(loaded) == 10
+    a = buffer.sample(300, np.random.default_rng(4))
+    b = loaded.sample(300, np.random.default_rng(4))
+    np.testing.assert_array_equal(a.z, b.z)
+
+
+def test_save_after_load_then_add_rewrites_the_generation(tmp_path) -> None:
+    directory = tmp_path / "buffer"
+    buffer = ReplayBuffer(size=3, generations=2)
+    buffer.add(tagged(3, 2, 1.0), generation=1)
+    buffer.add(tagged(3, 2, 2.0), generation=2)
+    buffer.save(directory)
+
+    loaded = ReplayBuffer.load(directory, size=3, generations=2)
+    # Loading must not count as a change: an unchanged generation is not rewritten.
+    path1 = directory / "gen_001.npz"
+    old = path1.stat().st_mtime_ns - 10**9
+    os.utime(path1, ns=(old, old))
+    loaded.add(tagged(3, 3, 22.0), generation=2)
+    loaded.save(directory)
+    assert path1.stat().st_mtime_ns == old
+
+    again = ReplayBuffer.load(directory, size=3, generations=2)
+    assert len(again) == 2 + 2 + 3
+    assert set(np.unique(again.sample(300, np.random.default_rng(0)).z)) == {1.0, 2.0, 22.0}
+
+
+def test_save_to_a_second_directory_writes_everything(tmp_path) -> None:
+    buffer = ReplayBuffer(size=3, generations=2)
+    buffer.add(tagged(3, 2, 1.0), generation=1)
+    buffer.save(tmp_path / "a")
+    buffer.save(tmp_path / "b")
+    assert sorted(p.name for p in (tmp_path / "b").iterdir()) == ["gen_001.npz"]
+
+
+# --- Durability: fsync, stale temporary files ---------------------------------
+
+
+def test_save_fsyncs_before_rename(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[str] = []
+    real_fsync, real_replace = os.fsync, os.replace
+
+    def fsync(fd: int) -> None:
+        events.append("fsync")
+        real_fsync(fd)
+
+    def replace(src, dst) -> None:
+        events.append("replace")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(replay_module.os, "fsync", fsync)
+    monkeypatch.setattr(replay_module.os, "replace", replace)
+    buffer = ReplayBuffer(size=3, generations=2)
+    buffer.add(tagged(3, 1, 0.0), generation=1)
+    buffer.save(tmp_path)
+    assert "replace" in events
+    assert "fsync" in events[: events.index("replace")]
+
+
+def test_stale_temporary_files_are_ignored_and_removed(tmp_path) -> None:
+    directory = tmp_path / "buffer"
+    buffer = ReplayBuffer(size=3, generations=2)
+    buffer.add(tagged(3, 1, 0.0), generation=1)
+    buffer.save(directory)
+
+    # What a SIGKILL mid-save leaves behind.
+    (directory / ".gen_abc123.tmp").write_bytes(b"half a file")
+    loaded = ReplayBuffer.load(directory, size=3, generations=2)
+    assert loaded.generations == [1]
+    assert sorted(p.name for p in directory.iterdir()) == ["gen_001.npz"]
+
+    (directory / ".gen_def456.tmp").write_bytes(b"half a file")
+    loaded.save(directory)
+    assert sorted(p.name for p in directory.iterdir()) == ["gen_001.npz"]
+
+
+# --- Sampling caches the concatenation ----------------------------------------
+
+
+def test_sample_caches_the_concatenation(monkeypatch: pytest.MonkeyPatch) -> None:
+    buffer = ReplayBuffer(size=3, generations=3)
+    buffer.add(tagged(3, 2, 1.0), generation=1)
+    buffer.add(tagged(3, 2, 2.0), generation=2)
+    reference = buffer.sample(50, np.random.default_rng(9))
+
+    calls = 0
+    real = Examples.concatenate
+
+    def counting(parts):
+        nonlocal calls
+        calls += 1
+        return real(parts)
+
+    monkeypatch.setattr(Examples, "concatenate", staticmethod(counting))
+    first = buffer.sample(50, np.random.default_rng(9))
+    second = buffer.sample(50, np.random.default_rng(9))
+    assert calls == 0  # served from the cache built by the first sample
+    np.testing.assert_array_equal(first.z, reference.z)
+    np.testing.assert_array_equal(second.z, reference.z)
+
+    # Mutations invalidate the cache: new rows show up in the next sample.
+    buffer.add(tagged(3, 2, 3.0), generation=3)
+    assert 3.0 in buffer.sample(300, np.random.default_rng(0)).z
+    buffer.drop_above(2)
+    assert 3.0 not in buffer.sample(300, np.random.default_rng(0)).z
 
 
 # --- legal_from_planes --------------------------------------------------------
