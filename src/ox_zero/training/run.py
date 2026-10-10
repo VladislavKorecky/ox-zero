@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import sys
 import time
 from collections.abc import Mapping
@@ -96,6 +97,8 @@ from ox_zero.training.trainer import Trainer, TrainConfig
 MATCHES_FILE = "matches.jsonl"
 RATINGS_FILE = "ratings.json"
 BUFFER_DIR = "buffer"
+# The smallest board a run accepts: the length of a winning line (OXO / XOX).
+MIN_SIZE = 3
 
 
 class ConfigMismatchError(ValueError):
@@ -146,6 +149,36 @@ class RunConfig:
     train: TrainConfig = TrainConfig()
     eval: EvalConfig = EvalConfig()
     tensorboard: bool = True
+
+    def __post_init__(self) -> None:
+        # Reject nonsense at construction, like the sub-configs do, so a bad
+        # flag in scripts/train.py becomes a usage error instead of a run
+        # that fails later (or worse, does something silently pointless).
+        #
+        # Size: the game itself accepts any positive size, but a winning
+        # line is three cells long, so on a board smaller than 3x3 nobody
+        # can ever win. Every game would be a draw, every value target
+        # `z` would be 0, and the run would learn nothing about the game.
+        if self.size < MIN_SIZE:
+            raise ValueError(
+                f"size must be at least {MIN_SIZE} (a winning line is {MIN_SIZE} long), "
+                f"got {self.size}"
+            )
+        # 0 is allowed: it writes only gen_000.pt, the random-network anchor.
+        if self.generations < 0:
+            raise ValueError(f"generations must be at least 0, got {self.generations}")
+        # The name is one directory under `root`. A separator would nest it
+        # (or, with "..", escape `root`); "." would be `root` itself.
+        separators = [sep for sep in (os.sep, os.altsep, "/") if sep]
+        if (
+            not self.name
+            or self.name in (".", "..")
+            or any(sep in self.name for sep in separators)
+        ):
+            raise ValueError(
+                f"name must be a single non-empty directory name, got {self.name!r}"
+            )
+
 
 @dataclass(frozen=True)
 class RunIdentity:

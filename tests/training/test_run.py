@@ -421,3 +421,27 @@ def test_resume_at_generation_zero_removes_stale_ratings(tmp_path):
 
     assert pairings(run_dir) == []
     assert not (run_dir / "ratings.json").exists()
+
+
+# 13. RunConfig rejects nonsense ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "changes, message",
+    [
+        ({"size": 2}, "size"),
+        ({"size": 0}, "size"),
+        ({"generations": -1}, "generations"),
+        ({"name": ""}, "name"),
+        ({"name": "a/b"}, "name"),
+        ({"name": ".."}, "name"),
+        ({"name": "."}, "name"),
+    ],
+)
+def test_run_config_rejects_bad_values(changes, message):
+    with pytest.raises(ValueError, match=message):
+        tiny(**changes)
+
+
+def test_run_config_accepts_the_smallest_values():
+    assert tiny(size=3, generations=0).size == 3
