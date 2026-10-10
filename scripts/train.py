@@ -122,7 +122,7 @@ def main() -> None:
     parser.add_argument("--filters", type=int, default=64, help="feature maps per convolution")
     # Tournament (EvalConfig).
     parser.add_argument("--eval-games", type=int, default=20, help="openings per pairing (x2 colours)")
-    parser.add_argument("--eval-opponents", type=int, default=3, help="nearest previous checkpoints played")
+    parser.add_argument("--eval-opponents", type=int, default=3, help="nearest previous checkpoints played (at least 1)")
     parser.add_argument("--eval-ladder", type=int, default=8, help="also play g - N; 0 turns it off")
     args = parser.parse_args()
     print(f"Parameters: {vars(args)}")
