@@ -378,30 +378,3 @@ def test_checkpoint_name_and_latest_generation(tmp_path):
     (tmp_path / "sub").mkdir()
     (tmp_path / "sub" / "gen_009.pt").write_bytes(b"")  # not recursive
     assert latest_generation(tmp_path) == 2
-
-
-# 12. Atomic writes are durable ---------------------------------------------------
-
-
-def test_write_atomically_fsyncs_file_then_directory(tmp_path, monkeypatch):
-    """Like the buffer's save: the data reaches the disk before the rename,
-    and the directory (which holds the new name) is synced after it."""
-    import stat
-
-    events: list[str] = []
-    real_fsync, real_replace = os.fsync, os.replace
-
-    def fsync(fd):
-        events.append("fsync-dir" if stat.S_ISDIR(os.fstat(fd).st_mode) else "fsync-file")
-        real_fsync(fd)
-
-    def replace_(src, dst):
-        events.append("replace")
-        real_replace(src, dst)
-
-    monkeypatch.setattr(run_module.os, "fsync", fsync)
-    monkeypatch.setattr(run_module.os, "replace", replace_)
-    path = tmp_path / "ratings.json"
-    run_module._write_atomically(path, "{}\n")
-    assert path.read_text() == "{}\n"
-    assert events == ["fsync-file", "replace", "fsync-dir"]

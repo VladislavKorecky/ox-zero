@@ -23,15 +23,14 @@ the loader, never pickled as objects.
 
 from __future__ import annotations
 
-import contextlib
 import dataclasses
-import os
 import re
-import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from ox_zero.training.atomic import atomic_write
 
 # torch (and the network, which needs it) is imported inside the functions
 # that use it, not here. `latest_checkpoint` only looks at file names, and the
@@ -103,11 +102,12 @@ def save_checkpoint(
             `cuda`) has its own generator, which is not saved, so only
             CPU-side random sequences resume exactly.
 
-    The file is written atomically: to a temporary file in the same
-    directory, then renamed over `path`. A rename within one file system
-    either happens completely or not at all, so a save interrupted by
-    Ctrl-C or a crash never leaves a truncated `gen_N.pt` behind for
-    `latest_checkpoint` to pick as the newest.
+    The file is written atomically and durably (`atomic.atomic_write`): to
+    a temporary file in the same directory, fsynced, then renamed over
+    `path`. A rename within one file system either happens completely or not
+    at all, so a save interrupted by Ctrl-C or a crash never leaves a
+    truncated `gen_N.pt` behind for `latest_checkpoint` to pick as the
+    newest.
     """
     import torch
 
@@ -128,34 +128,10 @@ def save_checkpoint(
         ),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    # The temporary name starts with a dot and does not end in `.pt`, so
-    # `latest_checkpoint` never mistakes a half-written file for a checkpoint;
-    # the random part keeps two concurrent saves from colliding. Mode 0o666
-    # is what a plain `open` asks for: the kernel subtracts the umask, so the
-    # checkpoint gets the usual permissions (`tempfile.mkstemp` would make
-    # it owner-only, and the rename would keep that).
-    temporary = path.parent / f".{path.name}.{secrets.token_hex(8)}.tmp"
-    # O_EXCL: fail rather than reuse an existing file. O_BINARY exists only on
-    # Windows, where a descriptor is text mode by default and would mangle
-    # every newline byte in the zip; elsewhere it is 0 and changes nothing.
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
-    fd = os.open(temporary, flags, 0o666)
-    try:
-        with os.fdopen(fd, "wb") as file:
-            torch.save(data, file)
-            # Best effort to get the bytes to disk before the rename. This is
-            # not a power-loss guarantee (that would need the directory synced
-            # too, and F_FULLFSYNC on macOS); the rename is what protects
-            # against the common case, a save interrupted by Ctrl-C or a crash.
-            file.flush()
-            os.fsync(file.fileno())
-        os.replace(temporary, path)
-    except BaseException:
-        # BaseException, not Exception: clean up on Ctrl-C too, then re-raise.
-        # A failing cleanup must not replace the error that caused it.
-        with contextlib.suppress(OSError):
-            os.unlink(temporary)
-        raise
+    # `atomic_write`'s temporary starts with a dot and does not end in `.pt`,
+    # so `latest_checkpoint` never mistakes a half-written file for a
+    # checkpoint.
+    atomic_write(path, lambda file: torch.save(data, file))
 
 
 def load_checkpoint(path: Path, device: torch.device | None = None) -> Checkpoint:

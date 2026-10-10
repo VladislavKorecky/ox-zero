@@ -409,8 +409,8 @@ def test_save_fsyncs_before_rename(tmp_path, monkeypatch: pytest.MonkeyPatch) ->
         events.append("replace")
         real_replace(src, dst)
 
-    monkeypatch.setattr(replay_module.os, "fsync", fsync)
-    monkeypatch.setattr(replay_module.os, "replace", replace)
+    monkeypatch.setattr(os, "fsync", fsync)
+    monkeypatch.setattr(os, "replace", replace)
     buffer = ReplayBuffer(size=3, generations=2)
     buffer.add(tagged(3, 1, 0.0), generation=1)
     buffer.save(tmp_path)
@@ -439,8 +439,8 @@ def test_save_fsyncs_the_directory_after_the_renames(
         events.append("unlink")
         real_unlink(self, missing_ok=missing_ok)
 
-    monkeypatch.setattr(replay_module.os, "fsync", fsync)
-    monkeypatch.setattr(replay_module.os, "replace", replace)
+    monkeypatch.setattr(os, "fsync", fsync)
+    monkeypatch.setattr(os, "replace", replace)
     monkeypatch.setattr(replay_module.Path, "unlink", unlink)
     buffer = ReplayBuffer(size=3, generations=1)
     buffer.add(tagged(3, 1, 0.0), generation=1)
