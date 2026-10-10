@@ -85,8 +85,10 @@ class SelfPlayConfig:
     simulations: int = 100
 
     def __post_init__(self) -> None:
-        if self.games < 0:
-            raise ValueError(f"games must be non-negative, got {self.games}")
+        # At least one game: a generation with no games adds no examples, and
+        # generation 1 would then train on an empty buffer (nothing to sample).
+        if self.games < 1:
+            raise ValueError(f"games must be at least 1, got {self.games}")
         if self.parallel < 1:
             raise ValueError(f"parallel must be at least 1, got {self.parallel}")
         # At least one simulation, so the root has visits and therefore a

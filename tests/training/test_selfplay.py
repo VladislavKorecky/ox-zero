@@ -218,6 +218,15 @@ def test_config_defaults() -> None:
     assert SelfPlayConfig() == SelfPlayConfig(games=128, parallel=64, simulations=100)
 
 
+def test_config_needs_at_least_one_game() -> None:
+    # Zero games would give an empty generation, and training on an empty
+    # buffer (generation 1 has nothing older) has nothing to sample.
+    with pytest.raises(ValueError, match="games"):
+        SelfPlayConfig(games=0)
+    with pytest.raises(ValueError, match="games"):
+        SelfPlayConfig(games=-1)
+
+
 def test_a_generation_of_games() -> None:
     result = self_play(UniformEvaluator(), 4, SELF_PLAY, SMALL, np.random.default_rng(0))
 
