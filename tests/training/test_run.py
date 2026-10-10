@@ -32,7 +32,16 @@ from ox_zero.game.rules import apply_move, initial_state
 from ox_zero.training.checkpoint import load_checkpoint
 from ox_zero.training.evaluate import EvalConfig
 from ox_zero.training.metrics import read_metrics
-from ox_zero.training.run import RunConfig, RunIdentity, run
+import ox_zero.training.run as run_module
+from ox_zero.training.run import (
+    ConfigMismatchError,
+    RunConfig,
+    RunDirectoryError,
+    RunIdentity,
+    checkpoint_name,
+    latest_generation,
+    run,
+)
 from ox_zero.training.selfplay import SelfPlayConfig
 from ox_zero.training.trainer import TrainConfig
 
@@ -310,3 +319,63 @@ def test_defaults_match_the_interface():
     assert config.search == SELF_PLAY
     assert config.network == NetworkConfig()
     assert config.tensorboard is True
+
+
+# 9. A fresh run refuses a directory with a previous run's leftovers ----------
+
+
+@pytest.mark.parametrize("leftover", ["metrics.jsonl", "matches.jsonl", "ratings.json", "buffer"])
+def test_fresh_run_refuses_leftovers_without_a_checkpoint(tmp_path, leftover):
+    """No `gen_*.pt` but old logs: starting fresh would append the new run's
+    rows to the old run's, mixing two experiments in one curve. Nothing is
+    deleted; the user decides."""
+    run_dir = tmp_path / "tiny"
+    run_dir.mkdir()
+    if leftover == "buffer":
+        (run_dir / "buffer").mkdir()
+        (run_dir / "buffer" / "gen_001.npz").write_bytes(b"old")
+    else:
+        (run_dir / leftover).write_text("{}\n")
+
+    with pytest.raises(RunDirectoryError, match="previous run"):
+        run(tiny(generations=1), root=tmp_path, device=CPU)
+    # A ValueError too, so callers catching ValueError keep working.
+    assert issubclass(RunDirectoryError, ValueError)
+    # Nothing was deleted, and no checkpoint was written.
+    assert (run_dir / leftover).exists()
+    assert latest_generation(run_dir) is None
+
+
+def test_fresh_run_accepts_an_empty_directory(tmp_path):
+    (tmp_path / "tiny").mkdir()
+    (tmp_path / "tiny" / "buffer").mkdir()  # an empty buffer/ holds nothing
+    run_dir = run(tiny(generations=1), root=tmp_path, device=CPU)
+    assert (run_dir / "gen_001.pt").is_file()
+
+
+# 10. Resume mismatch has its own exception type -------------------------------
+
+
+def test_resume_mismatch_raises_config_mismatch_error(tmp_path):
+    config = tiny(generations=1)
+    run(config, root=tmp_path, device=CPU)
+    with pytest.raises(ConfigMismatchError, match="seed"):
+        run(replace(config, seed=1), root=tmp_path, device=CPU)
+    assert issubclass(ConfigMismatchError, ValueError)
+
+
+# 11. Checkpoint naming helpers --------------------------------------------------
+
+
+def test_checkpoint_name_and_latest_generation(tmp_path):
+    assert checkpoint_name(7) == "gen_007.pt"
+    assert checkpoint_name(1234) == "gen_1234.pt"
+    assert latest_generation(tmp_path / "missing") is None
+    assert latest_generation(tmp_path) is None
+    (tmp_path / "gen_002.pt").write_bytes(b"")
+    (tmp_path / "gen_010.pt").mkdir()  # not a file: ignored
+    (tmp_path / "gen_x.pt").write_bytes(b"")  # not a number: ignored
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "gen_009.pt").write_bytes(b"")  # not recursive
+    assert latest_generation(tmp_path) == 2
+

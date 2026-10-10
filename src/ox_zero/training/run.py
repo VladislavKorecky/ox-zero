@@ -98,6 +98,26 @@ RATINGS_FILE = "ratings.json"
 BUFFER_DIR = "buffer"
 
 
+class ConfigMismatchError(ValueError):
+    """Resuming with a config that differs from the one the run was trained
+    with (see "Why resume refuses a changed config" above).
+
+    A `ValueError` subclass, so a caller can tell this expected, user-facing
+    refusal apart from a `ValueError` raised by a genuine bug, and print it
+    as a message instead of a traceback.
+    """
+
+
+class RunDirectoryError(ValueError):
+    """The run directory holds a previous run's files but no checkpoint.
+
+    Starting fresh there would append the new run's rows to the old run's
+    `metrics.jsonl` / `matches.jsonl` and mix two experiments in one curve.
+    The run never deletes them itself (they may be the only record of an
+    experiment); the user removes them or picks another name.
+    """
+
+
 @dataclass(frozen=True)
 class RunConfig:
     """Everything that defines a training run.
@@ -154,8 +174,10 @@ def run(config: RunConfig, root: Path = Path("runs"), device: torch.device | Non
             (`select_device()`). Opponent checkpoints load onto the same one.
 
     Raises:
-        ValueError: Resuming with a config that differs from the stored one
-            (the message names the field).
+        ConfigMismatchError: Resuming with a config that differs from the
+            stored one (the message names the field).
+        RunDirectoryError: The directory has no checkpoint but holds a
+            previous run's logs or buffer (nothing is deleted).
     """
     device = device if device is not None else select_device()
     run_dir = Path(root) / config.name
@@ -165,8 +187,9 @@ def run(config: RunConfig, root: Path = Path("runs"), device: torch.device | Non
     # The run's one NumPy generator (see "Why one RNG" in the module docstring).
     rng = np.random.default_rng(config.seed)
 
-    latest = _latest_generation(run_dir)
+    latest = latest_generation(run_dir)
     if latest is None:
+        _check_no_leftovers(run_dir)
         # A fresh run. Seed torch once, for the initial weights, and build
         # them on the CPU before moving: CPU initialisation is reproducible on
         # every machine, while GPU generators differ by backend.
@@ -180,7 +203,7 @@ def run(config: RunConfig, root: Path = Path("runs"), device: torch.device | Non
         _save(run_dir, 0, network, trainer, config, rng)
         latest = 0
     else:
-        checkpoint = _load(run_dir / _checkpoint_name(latest), device)
+        checkpoint = _load(run_dir / checkpoint_name(latest), device)
         _check_config(config, checkpoint)
         network = checkpoint.network
         trainer = Trainer(network, config.train, device, checkpoint.optimizer_state)
@@ -268,7 +291,7 @@ def _generation(
     clock = time.perf_counter()
     match_rows: list[dict[str, Any]] = []
     for opponent in opponents_for(generation, config.eval):
-        opponent_net = _load(run_dir / _checkpoint_name(opponent), device).network
+        opponent_net = _load(run_dir / checkpoint_name(opponent), device).network
         match = play_match(
             evaluator,
             NetworkEvaluator(opponent_net, device),
@@ -344,18 +367,46 @@ def _generation(
     _save(run_dir, generation, network, trainer, config, rng)
 
 
-def _checkpoint_name(generation: int) -> str:
+def checkpoint_name(generation: int) -> str:
+    """The checkpoint file name of `generation`: `gen_NNN.pt` (at least 3 digits)."""
     return f"gen_{generation:03d}.pt"
 
 
-def _latest_generation(run_dir: Path) -> int | None:
-    """The highest generation with a `gen_NNN.pt` in `run_dir` (not recursive)."""
+def latest_generation(run_dir: Path) -> int | None:
+    """The highest generation with a `gen_NNN.pt` file in `run_dir`, or `None`.
+
+    Not recursive, and only regular files count (a directory or a dangling
+    link with a checkpoint's name is skipped). Unlike
+    `checkpoint.latest_checkpoint`, which searches a whole tree of runs for
+    the CLI, this looks at one run directory: its checkpoints are the run's
+    commit markers, so the answer is "how far has this run got".
+    """
     generations = []
     for path in run_dir.glob("gen_*.pt"):
         digits = path.stem.removeprefix("gen_")
         if digits.isdigit() and path.is_file():
             generations.append(int(digits))
     return max(generations, default=None)
+
+
+def _check_no_leftovers(run_dir: Path) -> None:
+    """Raise `RunDirectoryError` if a checkpoint-less `run_dir` holds old run files.
+
+    Called only when `run_dir` has no `gen_*.pt`. A fresh run creates every
+    one of these files itself, so finding one means a previous run (say, one
+    whose checkpoints were deleted, or one killed before its generation-0
+    checkpoint by a much older version) left it. Appending to it would mix
+    two runs. An empty `buffer/` holds no examples, so it does not count.
+    """
+    buffer_dir = run_dir / BUFFER_DIR
+    found = [name for name in (METRICS_FILE, MATCHES_FILE, RATINGS_FILE) if (run_dir / name).exists()]
+    if buffer_dir.is_dir() and any(buffer_dir.iterdir()):
+        found.append(f"{BUFFER_DIR}/")
+    if found:
+        raise RunDirectoryError(
+            f"{run_dir} holds a previous run's files ({', '.join(found)}) but no "
+            "gen_*.pt checkpoint to resume from; remove them or use a new run name"
+        )
 
 
 def _save(
@@ -368,7 +419,7 @@ def _save(
 ) -> None:
     """Write `gen_NNN.pt` with weights, optimiser, configs and RNG state."""
     save_checkpoint(
-        run_dir / _checkpoint_name(generation),
+        run_dir / checkpoint_name(generation),
         network,
         generation=generation,
         optimizer=trainer.optimizer,
@@ -396,7 +447,7 @@ def _load(path: Path, device: torch.device) -> Checkpoint:
 
 
 def _check_config(config: RunConfig, checkpoint: Checkpoint) -> None:
-    """Raise `ValueError` naming the first field where `config` differs from
+    """Raise `ConfigMismatchError` naming the first field where `config` differs from
     what the checkpoint was trained with (see the module docstring)."""
     stored = checkpoint.configs
     if config.size != checkpoint.size:
@@ -416,7 +467,7 @@ def _compare(prefix: str, stored: Mapping[str, Any], current: Mapping[str, Any])
 
 
 def _mismatch(field: str, stored: Any, current: Any) -> None:
-    raise ValueError(
+    raise ConfigMismatchError(
         f"cannot resume: {field} is {current!r} but the run was trained with {stored!r}; "
         "a changed configuration needs a new run name"
     )
