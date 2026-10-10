@@ -44,6 +44,8 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 # `torch.utils.tensorboard` is imported lazily inside `MetricsWriter.__init__`
 # (plan 04: "Lazy import keeps `import ox_zero.training` cheap"). Importing
 # it pulls in tensorboard and protobuf; tests and `--no-tensorboard` runs
@@ -105,6 +107,11 @@ class MetricsWriter:
         if not isinstance(generation, numbers.Integral) or isinstance(generation, bool):
             raise ValueError(f"a metrics row needs an integer 'generation', got {generation!r}")
 
+        # NumPy scalars (np.int64 from array indexing, np.float32 from a
+        # float32 tensor's mean, ...) pass the checks above but `json.dumps`
+        # cannot encode them, so convert to plain Python first. Both the JSON
+        # line and the TensorBoard mirror use the converted row.
+        row = _to_python(row)
         line = json.dumps(row, sort_keys=False)
         with self._path.open("a", encoding="utf-8") as file:
             file.write(line + "\n")
@@ -127,6 +134,25 @@ class MetricsWriter:
         if self._tensorboard is not None:
             self._tensorboard.close()
             self._tensorboard = None
+
+
+def _to_python(value: Any) -> Any:
+    """`value` with every NumPy scalar replaced by its Python equivalent.
+
+    `np.generic` is the base class of all NumPy scalar types; its `.item()`
+    returns the matching Python `int`, `float` or `bool`, so `np.int64(3)`
+    stays an integer in the JSON (not `3.0`). Mappings are rebuilt
+    recursively, keys included (an `np.int64` opponent generation as a
+    `scores` key would trip `json.dumps` just the same); lists and tuples
+    likewise. Anything else is returned unchanged.
+    """
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, Mapping):
+        return {_to_python(key): _to_python(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_python(item) for item in value]
+    return value
 
 
 def _repair_partial_last_line(path: Path) -> None:
