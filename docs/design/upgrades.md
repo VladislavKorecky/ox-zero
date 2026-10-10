@@ -27,6 +27,7 @@ Columns: what the change is, what it is expected to buy, where the idea comes fr
 | **Win/draw/loss value head** (3-way softmax) | Separates "drawish" from "unclear". Better calibrated when draws are common. | Leela Chess Zero, KataGo | If the measured draw rate is high |
 | **SGD with momentum + stepped learning rate** | The paper's optimiser; sometimes generalises better. | AlphaZero 2018 | When we want to compare against a faithful run |
 | **Bigger towers** | Strength, at compute cost. | Paper | For the final 12×12 run on a rented GPU |
+| **Exclude norms and biases from weight decay** (AdamW parameter groups) | Weight decay on BatchNorm scales and biases shrinks parameters that do not cause overfitting; excluding them is a common refinement. Version 1 decays every parameter, as the paper's `c · ‖θ‖²` does ([plan 04](../plans/04-training-pipeline.md#decisions-made-in-this-plan)). | Common practice | Low priority; if the value loss plateaus |
 
 ## Training
 

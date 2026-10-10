@@ -14,22 +14,26 @@ src/ox_zero/
     network_evaluator.py  NetworkEvaluator, select_device (the only torch on the search path)
     mcts.py      Node, PUCT selection, expansion, backup, tree reuse
     search.py    SearchConfig; SearchTree (two-phase select / expand-and-backup); analyse (snapshot generator)
-  training/
-    selfplay.py  lockstep self-play of many games; SelfPlayConfig
-    replay.py    the replay buffer
-    trainer.py   the optimiser, one training step; TrainConfig
-    evaluate.py  checkpoint tournaments and Elo
-    checkpoint.py save / load of weights + configs + optimiser + RNG state; latest_checkpoint   (built, plan 03)
-    run.py       the generation loop, logging, resume
+  training/                                            (built, plan 04)
+    selfplay.py  lockstep self-play of many games; SelfPlayConfig, Examples, z labelling
+    replay.py    the replay buffer (expiry by generation, persisted per generation); augmentation
+    trainer.py   AdamW, one training step, one generation of steps; TrainConfig
+    evaluate.py  checkpoint tournaments (paired openings, two trees per game) and the Elo fit; EvalConfig
+    metrics.py   one JSON Lines row per generation, mirrored to TensorBoard
+    checkpoint.py save / load of weights + configs + optimiser + RNG state; latest_checkpoint   (plan 03)
+    run.py       the generation loop, resume; RunConfig
   cli/
     adapter.py   SearchEngine wraps engine.search into the CLI's Engine port; load_engine (built, plan 03)
 scripts/
   bench_search.py  simulations per second for a board size, evaluator and device
   make_checkpoint.py  a random-weights checkpoint, to try --model before training exists
-  train.py       entry point that builds configs and calls training.run
-  plot.py        curves from metrics files (until a dashboard exists)
-checkpoints/     run outputs, gitignored
+  train.py       starts or resumes a run: builds a RunConfig and calls training.run
+  evaluate.py    pits two checkpoints, or one against the uniform search, and prints the Elo gap
+runs/            training runs, gitignored
+checkpoints/     models the CLI loads, gitignored
 ```
+
+There is no plotting script: TensorBoard reads the run's event files, and anything else reads `metrics.jsonl`.
 
 One module per concept. `engine` never imports `training` or `cli`; `training` never imports `cli`.
 
@@ -60,20 +64,35 @@ The rules stay immutable and functional; the tree is the one place with mutable 
 
 ## Configuration and checkpoints
 
-**Decided:** frozen dataclasses with defaults, one per concern: `NetworkConfig` (blocks, filters, value hidden size), `SearchConfig` (`c_base`, `c_init`, noise `ε` and `α`, simulations, temperature cutoff, root expansion), `SelfPlayConfig` (games per generation, parallel games), `TrainConfig` (batch size, steps per generation, learning rate, weight decay, buffer generations `K`). Board size is part of the run configuration and stored alongside.
+**Decided:** frozen dataclasses with defaults, one per concern: `NetworkConfig` (blocks, filters, value hidden size), `SearchConfig` (`c_base`, `c_init`, noise `ε` and `α`, simulations, temperature cutoff, root expansion), `SelfPlayConfig` (games per generation, parallel games, simulations per move), `TrainConfig` (batch size, steps per generation, learning rate, weight decay, buffer generations `K`), `EvalConfig` (nearest opponents, at least 1; ladder distance; games per colour; simulations). `RunConfig` bundles them with the run's name, board size, seed and generation target. Board size is part of the run configuration and stored alongside.
 
 A checkpoint is a single `torch.save` file containing the model weights, optimiser state, every config, the board size, the generation number, and RNG state. A checkpoint therefore fully describes itself: the loader rebuilds the exact architecture and encoding without any external file. No YAML layer; a run is configured in code (`scripts/train.py`).
 
 **Format (plan 03):** the file holds plain data only (tensors, numbers, strings, lists, dicts), with configs stored as field dicts, and is loaded with `torch.load(..., weights_only=True)`. Unpickling arbitrary objects can execute code, so a downloaded checkpoint must never need it; the loader rebuilds the dataclasses itself. A `format_version` field guards future changes. Saves are atomic (temporary file, then rename), so an interrupted save never leaves a truncated newest checkpoint.
 
-`checkpoints/<run-name>/gen_NNN.pt`, gitignored. A model worth sharing is attached to a GitHub release, not committed.
+**Run directory (plan 04, approved 2026-10-09).** A training run lives in `runs/<name>/`, gitignored, not in `checkpoints/`:
+
+```
+runs/<name>/
+  gen_NNN.pt       one checkpoint per generation; gen_000.pt is the random network (the Elo anchor)
+  buffer/gen_NNN.npz  the replay buffer, one file per held generation
+  metrics.jsonl    one row per generation
+  matches.jsonl    one row per tournament pairing
+  ratings.json     the current Elo table, rewritten each generation
+  tensorboard/     event files, unless turned off
+```
+
+Why not `checkpoints/`: the CLI auto-loads the newest checkpoint there and is 12x12 only, so a 6x6 run in it would break every `ox-zero analyze` without `--model`. To use a trained model from the CLI, copy or link its checkpoint under `checkpoints/`. A model worth sharing is attached to a GitHub release, not committed.
+
+A run's checkpoints store `search`, `selfplay`, `train`, `eval` and `run` in `configs`; `run` is `RunIdentity(name, seed)`. Resuming compares all of them, the board size and the network config with the new run's and refuses any difference (a run is its config; a new config is a new name). The generation target and the TensorBoard switch are exempt. The checkpoint is written last in a generation, so it is the commit marker: on resume, anything logged or buffered above the latest checkpoint is dropped and that generation is re-run.
 
 ## Devices and determinism
 
 - Device selection at runtime: `cuda` → `mps` → `cpu`. Never hardcoded. Tests run on `cpu`.
 - float32 only.
-- Every source of randomness (NumPy for Dirichlet noise and sampling, torch for weights and augmentation) is seeded from one run seed and its state is checkpointed, so a resumed run continues rather than restarts.
-- Bit-exact reproducibility across devices is not a goal; reproducibility of a run on one device is.
+- Every source of randomness is seeded from one run seed and its state is checkpointed, so a resumed run continues rather than restarts. One NumPy generator drives Dirichlet noise, move sampling, replay-buffer sampling, augmentation (the symmetry per example) and the tournament openings; torch is seeded once, for the initial weights. Single-threaded lockstep draws from the shared generator in a fixed order, so one generator is one state to checkpoint.
+- Bit-exact reproducibility across devices is not a goal; reproducibility of a run on one device is. As built (plan 04), resume is bit-for-bit on the same device: a run stopped and resumed gives the same weights and metrics as one run straight through (a test). The device is not part of the run config, so resuming on another backend is allowed, but changes the numerics from then on.
+- `scripts/train.py --device` defaults to `auto` (runtime selection), unlike the CLI's `cpu`: self-play batches are up to `parallel` positions, not 1. On 6x6 `cpu` measured faster anyway (below), so the 6x6 run used `--device cpu`.
 
 ## Testing
 
@@ -109,3 +128,15 @@ With `UniformEvaluator` instead of the network (pure tree cost), 6x6 runs at abo
 
 - **At batch size 1, `mps` is 1.7 to 3 times slower than `cpu`.** Each GPU call pays a fixed latency that a tiny batch cannot amortise. This is the third expected hot spot, and it confirms lockstep batching for self-play. For analysis, CPU is the faster device until virtual loss exists. No unsupported-op errors or fallback warnings appeared on `mps`.
 - **On 12x12 CPU, 62% of the time is the Python tree, not the network.** Expanding a node builds a `State` for each of its ~140 children: the `apply_move` hot spot predicted above. At 6x6 the network dominates instead.
+
+### Measured (2026-10-10): self-play throughput
+
+From the first 6x6 training run ([open-questions.md](open-questions.md#results-2026-10-10-the-first-6x6-run)): generation 1 of the provisional 6x6 configuration (128 games, 64 in lockstep, 100 simulations per move, 4×64 network), on the same laptop. Simulations/s is the self-play rate from the metrics row; the times are the generation's phases.
+
+| Device | Simulations/s | Self-play s | Train s | Eval s | Wall s |
+|---|---|---|---|---|---|
+| cpu | 8,559 | 8.1 | 5.7 | 2.4 | 16.3 |
+| mps | 5,749 | 12.1 | 3.5 | 2.9 | 18.4 |
+
+- **`cpu` is faster for 6x6 self-play even at batches of 64**, by about 1.5×: a batch of 64 positions on a 4×64 network is still too small to pay for the GPU's per-call latency. (The rates are not comparable with the batch-size-1 table above, which measures analysis mode.) `mps` wins only the training phase (batches of 256 with backprop). Over the 20-generation run on `cpu`, self-play stayed between about 6,500 and 9,600 simulations/s.
+- The whole generation is well under the 5-minute concern in the plan: 17 s at generation 1, 59–110 s from generation 8 on, when the tournament reaches four opponents and games are longer.
