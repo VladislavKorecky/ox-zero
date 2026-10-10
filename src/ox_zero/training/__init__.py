@@ -1,6 +1,10 @@
-"""The self-play training pipeline (roadmap step 4), being built.
+"""The self-play training pipeline (roadmap step 4).
 
-Design: docs/design/training.md. Today only `checkpoint` exists (pulled
-forward by plan 03 so the CLI can load models); self-play, the replay buffer,
-the trainer and the generation loop follow in plan 04.
+Design: docs/design/training.md; implementation plan: plan 04. Modules:
+`selfplay` (lockstep self-play and the `z` labelling), `replay` (the replay
+buffer and symmetry augmentation), `trainer` (AdamW training steps),
+`evaluate` (checkpoint tournaments and the Elo fit), `metrics` (JSON Lines and
+TensorBoard), `checkpoint` (the file format the CLI also reads) and `run` (the
+resumable generation loop that ties them together). Start a run with
+`scripts/train.py`.
 """

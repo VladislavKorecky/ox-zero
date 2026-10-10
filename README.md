@@ -2,7 +2,7 @@
 
 An [AlphaZero](https://arxiv.org/abs/1712.01815)-style engine for **OXOX**, a two-player board game derived from Tic-tac-toe, together with tooling for analyzing positions and studying the game.
 
-> **Status:** early development. The game rules (roadmap step 1), the CLI (step 2) and the engine (step 3: search and network) are done; the training pipeline (step 4) is designed but not built. The CLI runs on the engine; it plays on search alone until the training pipeline (step 4) produces a checkpoint.
+> **Status:** early development. The game rules (roadmap step 1), the CLI (step 2) and the engine (step 3: search and network) are done; the training pipeline (step 4) is built; the first 6x6 run is recorded in [open-questions.md](docs/design/open-questions.md#results-2026-10-10-the-first-6x6-run). The CLI runs on the engine; it plays on search alone until a 12x12 checkpoint exists under `checkpoints/`.
 
 ## The game
 
@@ -33,9 +33,12 @@ uv sync                                    # install
 uv run ox-zero analyze 5,5 6,6 5,6         # score every move in a position
 uv run ox-zero best 5,5 6,6 5,6            # print just the engine's move
 uv run ox-zero sandbox                     # interactive analysis screen
+uv run python scripts/train.py --size 6    # train a 6x6 network by self-play
 ```
 
 Positions are move lists (`row,col`, zero-based, X first) or 144-character board strings. See the [CLI specification](docs/cli.md) for every command, flag, and output format.
+
+Training writes one checkpoint per generation, plus metrics and TensorBoard logs, to `runs/<name>/` and resumes automatically when rerun; see [scripts/README.md](scripts/README.md#trainpy).
 
 ## Documentation
 

@@ -49,6 +49,25 @@ uv run python scripts/make_checkpoint.py      # defaults: 12x12, 4x64 network, s
 uv run ox-zero analyze 5,5 6,6 5,6 --model checkpoints_random/gen_000.pt
 ```
 
-## Later
+## train.py
 
-Launching training, evaluating checkpoints against each other, and similar runners will live here once the training pipeline exists.
+Trains a network by AlphaZero self-play: a thin wrapper around `ox_zero.training.run.run`. It prints the flags and the resulting `RunConfig`, then one line per generation as each is committed (game length, draw and X-win rates, self-play speed, losses, Elo and the tournament scores, wall time). Every default is a provisional 6x6 constant from [plan 04](../docs/plans/archive/04-training-pipeline.md) ("Provisional constants for 6x6"); `--help` lists one flag per constant. `--simulations` sets both the self-play and the tournament search; `--eval-ladder 0` turns the ladder opponent off.
+
+The run lives in `runs/<name>/` (default name `<size>x<size>-seed<seed>`; `--root` changes the parent): checkpoints `gen_NNN.pt`, `metrics.jsonl`, `matches.jsonl`, `ratings.json`, `buffer/` and `tensorboard/` (unless `--no-tensorboard`). Not `checkpoints/`: the CLI auto-loads from there and is 12x12 only, so copy or symlink a checkpoint there to use it.
+
+Resume is automatic. Ctrl-C at any moment leaves a valid run (the checkpoint is written last, so an interrupted generation is re-run); rerun the same command to continue, or raise `--generations` to extend a finished run. Any other changed flag is refused: a new configuration needs a new `--name`. A directory that holds an old run's `metrics.jsonl`, `matches.jsonl`, `ratings.json` or buffer files but no `gen_*.pt` is refused too (nothing is deleted): remove those files or pick another `--name`. `--games` and `--eval-opponents` must be at least 1.
+
+```bash
+uv run python scripts/train.py --size 6                     # runs/6x6-seed0, 20 generations, --device auto
+uv run python scripts/train.py --name six-a --device mps    # same constants, named run
+tensorboard --logdir runs/six-a/tensorboard
+```
+
+## evaluate.py
+
+Plays checkpoint `--a` against checkpoint `--b`, or against `--b uniform` (the CLI's no-model search), with the training tournament's match: noise-free search, `--games` random opening cells each played with both colours. The board size comes from `a`; a size mismatch is an error. Prints wins, draws and losses for `a` per colour, the score, and the Elo gap `elo_difference((points + 0.5) / (games + 1))`, with the same virtual draw as the run's Elo fit, so a 40-0 sweep prints about +760 rather than infinity.
+
+```bash
+uv run python scripts/evaluate.py --a runs/six-a/gen_020.pt --b runs/six-a/gen_000.pt   # 20 openings x 2 colours, 100 simulations, cpu
+uv run python scripts/evaluate.py --a runs/six-a/gen_020.pt --b uniform
+```

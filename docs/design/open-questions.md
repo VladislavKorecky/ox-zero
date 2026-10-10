@@ -4,6 +4,8 @@ Decisions that wait on data. The first implementation step, before any engine co
 
 **Status (2026-09-27):** the game experiments have run ([Results](#results-2026-09-27)) and the constants they could settle are settled ([Decisions](#decisions-2026-09-27)). What is still open waits on training runs, not on more game experiments.
 
+**Status (2026-10-10):** the training pipeline is built ([plan 04](../plans/archive/04-training-pipeline.md#decisions-made-in-this-plan)) and set the training constants provisionally for 6x6; the first 6x6 run is in [Results (2026-10-10)](#results-2026-10-10-the-first-6x6-run). Provisional means "a starting point the run's numbers re-derive", not decided.
+
 ## Experiments to run
 
 | Experiment | Method | What it decides |
@@ -13,6 +15,7 @@ Decisions that wait on data. The first implementation step, before any engine co
 | **Branching factor over a game** | Average legal moves per move number, per board size | Dirichlet `α = 10 / avg legal moves`, and how to define "average" (over positions in typical games, not over the empty board) |
 | **Exact solutions of 3×3, 4×4, maybe 5×5** | Minimax with memoisation on the immutable `State` | The solver fixture for search tests; also tells us who wins small boards, a sanity check on the rules and on the engine's first results |
 | **Safe moves over a game** (added after the first results) | Greedy play, counting the moves that do not lose on the spot at each move number | Whether the game is decided by running out of safe moves (a counting problem: global pooling, MCTS-Solver), and a better guide to trained-game length than random play |
+| **Is 6x6 an O win, or is self-play hiding X's defences?** (added after the first 6x6 run) | Re-run the 6x6 baseline with a longer temperature cutoff (4–5 moves) and more simulations, and watch X's self-play win rate; optionally solve 5x5 exactly (needs symmetry canonicalisation first, see [exact solutions](#exact-solutions)) to see whether an odd board breaks the pattern | Whether the O dominance in the [first 6x6 run](#results-2026-10-10-the-first-6x6-run) is a property of the game or of the exploration settings; feeds the temperature cutoff and the parity/global-pooling questions |
 
 ## Constants waiting on the experiments
 
@@ -22,11 +25,11 @@ Decisions that wait on data. The first implementation step, before any engine co
 | Temperature cutoff fraction | [search.md](search.md) | 20% of `S²` | **Decided:** a quarter of the measured mean game length: 2, 3, 4, 7 moves on 4x4, 6x6, 8x8, 12x12 |
 | Value head type | [network.md](network.md) | Scalar `tanh`; revisit if draws are common | **Decided:** scalar; draws are absent from 5x5 up |
 | Extra input plane | [network.md](network.md) | None; revisit if parity matters | **Decided:** none in version 1; parity matters but the plane is the wrong fix |
-| Tower size per board size | [network.md](network.md) | 4×64 on 6×6, ~6×128 on 12×12 | Open; nothing measured bears on it |
-| Learning rate, weight decay | [network.md](network.md) | `1e-3`, `1e-4` | Open; waits on loss curves |
-| Simulations per self-play move | [search.md](search.md) | Paper: 800; likely far fewer on small boards | Open; start at 100–200 on 6x6 |
-| Games per generation, training steps per generation, buffer generations `K` | [training.md](training.md) | `K ≈ 10–20`; the rest budget-driven | Open; examples per game are now known (13, 17, 28 on 6x6, 8x8, 12x12) |
-| Tournament protocol (games, opponents, simulations, tie-breaking of deterministic players) | [training.md](training.md) | Undecided | Open |
+| Tower size per board size | [network.md](network.md) | 4×64 on 6×6, ~6×128 on 12×12 | **Provisional, set in plan 04:** 4×64 on 6x6; 12x12 open |
+| Learning rate, weight decay | [network.md](network.md) | `1e-3`, `1e-4` | **Provisional, set in plan 04:** `1e-3`, `1e-4` (AdamW); the first run's loss was still falling at generation 20 |
+| Simulations per self-play move | [search.md](search.md) | Paper: 800; likely far fewer on small boards | **Provisional, set in plan 04:** 100 on 6x6, in self-play and in the tournament |
+| Games per generation, training steps per generation, buffer generations `K` | [training.md](training.md) | `K ≈ 10–20`; the rest budget-driven | **Provisional, set in plan 04:** 128 games (64 in lockstep), 50 steps of batch 256, `K = 10` on 6x6 |
+| Tournament protocol (games, opponents, simulations, tie-breaking of deterministic players) | [training.md](training.md#tournament-protocol) | Undecided | **Provisional, set in plan 04:** 3 nearest opponents plus a ladder opponent `g − 8`; 20 random openings × both colours; noise-free search at 100 simulations |
 | Root-expansion evaluations and the `simulations` count | [cli-integration.md](cli-integration.md) | Not counted | **Decided in plan 02:** not counted; the first snapshot reports `simulations = 0` |
 
 ## Questions for the plan, not the design
@@ -121,6 +124,64 @@ The full per-move series is in `scripts/experiments/results/safe_moves.json`. Th
 - **Trained games will be longer than these; how much longer is unknown.** Every length figure here comes from play that never builds structure: scattered marks poison their own neighbourhoods. Experience from human play (the author's) says the counter is the **wall**: same-mark blocks at least two cells thick contain no alternating triple and can be extended safely, and two cooperating walls fill the board to a draw (the two-row stripes mentioned under the value head are exactly this). The tactical layer on top is **islands**: a few well-placed marks that cut into the opponent's wall and its supply of safe moves. Games between players who know this run to 50–60 moves or more on 12x12. The 4x4 optimal-play sample cannot show any of it, because the board is too small for walls. The temperature cutoff and the examples-per-game figures are therefore provisional and get re-derived from the logged average game length once trained agents exist.
 - **Proof propagation should pay.** With most legal moves losing on the spot mid-game, an MCTS that averages terminal values instead of proving them spends its simulations relearning the same one-ply facts. MCTS-Solver moves to the front of the search upgrades.
 - **The empty 4x4 board is a poor solver fixture.** All 16 first moves lose, so "the search picks a proven-best move" is vacuous there. Fixtures need positions whose optimal moves are a strict, small subset of the legal ones. The empty 3x3 is one: eight moves draw and the centre loses.
+
+## Results (2026-10-10): the first 6x6 run
+
+The project's first training run, kept as the baseline later runs and tuning are measured against. Measured by [plan 04](../plans/archive/04-training-pipeline.md), step 8: `uv run python scripts/train.py --name six-a --size 6 --generations 20 --seed 0 --device cpu`, every other constant at its provisional value (table above). The run was interrupted with Ctrl-C during generation 6 and resumed with the same command; it continued from generation 6 and completed generation 20. About 26 minutes of wall time on the author's 8 GB Apple Silicon laptop. Throughput is in [engineering.md](engineering.md#measured-2026-10-10-self-play-throughput).
+
+"Elo" is the final Bradley-Terry fit over all of the run's matches, generation 0 at 0. "Ladder" is generation `g`'s score against `g − 8`. Mean length is in moves; the rates are over the generation's 128 self-play games.
+
+| Gen | Examples | Mean length | Draw rate | X win rate | Loss (total / policy / value) | Elo | Ladder | Wall s |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 696 | 5.4 | 0.00 | 0.53 | 4.471 / 3.494 / 0.976 | 177 | | 17.4 |
+| 2 | 1022 | 8.0 | 0.00 | 0.48 | 4.316 / 3.400 / 0.916 | 398 | | 26.7 |
+| 3 | 1027 | 8.0 | 0.00 | 0.45 | 4.183 / 3.317 / 0.866 | 535 | | 35.2 |
+| 4 | 1626 | 12.7 | 0.00 | 0.33 | 3.975 / 3.181 / 0.794 | 662 | | 47.6 |
+| 5 | 2256 | 17.6 | 0.00 | 0.39 | 3.666 / 2.949 / 0.717 | 697 | | 55.4 |
+| 6 | 1767 | 13.8 | 0.00 | 0.21 | 3.393 / 2.733 / 0.660 | 691 | | 54.5 |
+| 7 | 2437 | 19.0 | 0.00 | 0.15 | 3.132 / 2.537 / 0.595 | 726 | | 60.9 |
+| 8 | 2086 | 16.3 | 0.00 | 0.12 | 2.985 / 2.390 / 0.595 | 730 | 1.00 | 59.1 |
+| 9 | 2441 | 19.1 | 0.00 | 0.26 | 2.871 / 2.282 / 0.589 | 762 | 1.00 | 69.8 |
+| 10 | 2286 | 17.9 | 0.00 | 0.20 | 2.782 / 2.226 / 0.557 | 767 | 0.85 | 66.0 |
+| 11 | 1752 | 13.7 | 0.00 | 0.17 | 2.669 / 2.126 / 0.543 | 756 | 0.78 | 67.2 |
+| 12 | 2257 | 17.6 | 0.00 | 0.20 | 2.535 / 2.014 / 0.521 | 768 | 0.70 | 69.3 |
+| 13 | 2318 | 18.1 | 0.00 | 0.14 | 2.416 / 1.925 / 0.491 | 782 | 0.65 | 72.0 |
+| 14 | 2405 | 18.8 | 0.00 | 0.30 | 2.347 / 1.811 / 0.536 | 766 | 0.60 | 73.8 |
+| 15 | 2175 | 17.0 | 0.00 | 0.02 | 2.208 / 1.735 / 0.474 | 808 | 0.55 | 72.7 |
+| 16 | 2314 | 18.1 | 0.00 | 0.06 | 2.154 / 1.673 / 0.481 | 794 | 0.55 | 110.3 |
+| 17 | 2390 | 18.7 | 0.00 | 0.09 | 2.093 / 1.641 / 0.452 | 797 | 0.57 | 96.3 |
+| 18 | 2591 | 20.2 | 0.00 | 0.04 | 2.052 / 1.626 / 0.426 | 811 | 0.55 | 84.7 |
+| 19 | 2429 | 19.0 | 0.00 | 0.04 | 1.971 / 1.609 / 0.362 | 813 | 0.57 | 83.1 |
+| 20 | 2119 | 16.6 | 0.00 | 0.01 | 1.874 / 1.558 / 0.316 | 818 | 0.60 | 83.3 |
+
+`scripts/evaluate.py`, 20 openings per colour, 100 simulations: `gen_020` against `gen_000` won 40–0–0 (+763 Elo with the virtual draw); against the uniform search (the CLI's no-model engine) it won 33–0–7, score 0.825, +260 Elo: 14–0–6 as X and 19–0–1 as O.
+
+### What this shows
+
+Observations from one seeded run, not conclusions beyond it.
+
+- **The losses fell throughout.** Policy loss 3.49 → 1.56 and value loss 0.98 → 0.32 over 20 generations, and both were still falling at the end.
+- **Games got longer, as the wall-building prediction expected.** The mean self-play game grew from 5.4 moves at generation 1 to about 17–20 from generation 5 on, against 12.7 for random and 13.4 for greedy play ([random play](#random-play-uniformly-random-legal-move), [greedy play](#greedy-play-one-ply-lookahead-take-a-win-avoid-giving-one-else-random)). That fits "trained games will be longer than these" ([follow-up](#follow-up-safe-moves-over-a-game)). The other half of that prediction, two cooperating walls filling the board to a draw, did not appear: see the next point.
+- **No draws.** The self-play draw rate was 0.00 in every generation, far below the 20% trigger for a win/draw/loss value head ([network.md](network.md#value-head)). The scalar head stands.
+- **Self-play converges on O winning.** X's self-play win rate fell from about 0.5 to 0.01–0.04 by generations 15–20: O wins almost every game. 4x4 is a proven O win ([exact solutions](#exact-solutions)); this suggests 6x6 may be one too, but self-play at this strength is not a proof. Not "O always wins": `gen_020` won all 20 of its X games against `gen_000`, and 14 of 20 against the uniform search, so X wins against weaker play; it is when the network plays itself that X loses. The working theory is the avoidance-game structure from the [follow-up](#follow-up-safe-moves-over-a-game): games end when the side to move runs out of safe moves, every move eats into a shared supply of them, and moving first means facing the empty supply first, as in other parity games. Unproven; the self-play temperature sampling only the first 3 moves could also be hiding X's defences (see below).
+- **Most of the Elo gain is early.** Elo rose steeply to about 700 by generation 5 and then slowly to 818 at generation 20; later generations differ by small margins (scores against the previous generation 0.45–0.62 from generation 5 on).
+- **The ladder is informative at distance 8.** Ladder scores fell from sweeps (1.00 at generations 8 and 9) to 0.55–0.60 at generations 15–20, so at `ladder = 8` it measures something rather than reporting sweeps; no reason to shorten it.
+- **Strength against the uniform search is moderate.** `gen_020` sweeps the random network but beats the uniform search only 33–7, with 6 of its 7 losses as X: the side self-play has learned to lose with.
+
+### Why O dominates: the working theory (2026-10-10)
+
+Reasoning written down after the run so it is not lost. A hypothesis, not a result.
+
+- **Avoidance and parity.** From the [safe-moves follow-up](#follow-up-safe-moves-over-a-game): most moves soon hand the opponent a completion, and a game ends when the side to move has no safe move. Both sides draw on one shared supply of safe cells, so the endgame is a count, and the side that moves first meets the empty supply first, the same tempo problem as Dots and Boxes or misère games. Evidence that fits: 4x4 is a proven O win with every X first move losing; O leads at every size under greedy play; here, O wins 96–99% of self-play from generation 15 on.
+- **Not "O always wins".** `gen_020` won all 20 X games against `gen_000` and 14 of 20 against the uniform search. X loses when strong plays strong, not against weak play.
+- **A mirror strategy for O was tried and does not work as stated.** The natural candidate for a second-player win is: O answers X's move with the cell rotated 180° about the centre. Rotating the board and swapping X with O maps every alternating line to an alternating line (`XOX` ↔ `OXO`). On an even board no line of three is its own image, because the centre is a cell corner, not a cell. So after each O reply the position is invariant under rotate-and-swap. The strategy still fails, because threats belong to a mark: X can play next to an existing O (`X O _`), creating a cell only X can complete. O must block it instead of mirroring, and the mirrored reply would create an O threat while leaving X's threat open. So symmetry gives no simple proof; whether some repaired version works is open.
+- **The alternative explanation.** Self-play samples only the first 3 moves (temperature cutoff) at 100 simulations per move, so it may simply never explore X's defences. That would make the O dominance a property of the training settings, not of the game. The experiment that separates the two is in [Experiments to run](#experiments-to-run).
+
+**Constants to look at next** (suggestions for the tuning follow-up, not decisions):
+
+- **Temperature cutoff and simulations per move**, given that X almost never wins in self-play: with sampling only for the first 3 moves on 6x6 and deterministic play after, self-play may be exploring too little of X's options, and 100 simulations may be too few to find X's defences. The cutoff was derived from random-play lengths (a quarter of 12.7); a quarter of the measured ~18 would be 4–5 moves.
+- **`K = 10` seems fine:** nothing in the run points at stale data or too little of it.
+- **Steps per generation could rise**, since the loss was still falling at generation 20.
 
 ## Decisions (2026-09-27)
 
