@@ -237,3 +237,26 @@ def test_augmentation_is_applied_to_every_sampled_batch(monkeypatch) -> None:
     for (batch, call_rng), drawn in zip(calls, sampled):
         assert batch is drawn
         assert call_rng is rng
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"batch_size": 0},
+        {"batch_size": -1},
+        {"steps_per_generation": 0},
+        {"learning_rate": 0.0},
+        {"learning_rate": -1e-3},
+        {"weight_decay": -1e-4},
+        {"buffer_generations": 0},
+    ],
+)
+def test_train_config_rejects_invalid_values(bad: dict) -> None:
+    # Fail at construction, not later: zero steps would log NaN mean losses,
+    # a non-positive batch size would fail deep inside torch.
+    with pytest.raises(ValueError):
+        TrainConfig(**bad)
+
+
+def test_train_config_accepts_boundary_values() -> None:
+    TrainConfig(batch_size=1, steps_per_generation=1, weight_decay=0.0, buffer_generations=1)

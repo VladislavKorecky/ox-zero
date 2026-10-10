@@ -73,6 +73,28 @@ class TrainConfig:
     weight_decay: float = 1e-4
     buffer_generations: int = 10
 
+    def __post_init__(self) -> None:
+        # Reject nonsense at construction, like SelfPlayConfig and EvalConfig,
+        # instead of failing later and obscurely: zero steps would make the
+        # generation's mean losses `np.mean([])` = NaN (logged, not raised);
+        # a non-positive batch size would fail deep inside torch. A zero
+        # learning rate would train nothing; weight decay may be 0 (no
+        # regularisation) but not negative (that would *grow* the weights).
+        if self.batch_size < 1:
+            raise ValueError(f"batch_size must be at least 1, got {self.batch_size}")
+        if self.steps_per_generation < 1:
+            raise ValueError(
+                f"steps_per_generation must be at least 1, got {self.steps_per_generation}"
+            )
+        if not self.learning_rate > 0:
+            raise ValueError(f"learning_rate must be positive, got {self.learning_rate}")
+        if not self.weight_decay >= 0:
+            raise ValueError(f"weight_decay must be non-negative, got {self.weight_decay}")
+        if self.buffer_generations < 1:
+            raise ValueError(
+                f"buffer_generations must be at least 1, got {self.buffer_generations}"
+            )
+
 
 @dataclass(frozen=True)
 class StepLosses:
