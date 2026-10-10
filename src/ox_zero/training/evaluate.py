@@ -1,7 +1,7 @@
 """Checkpoint tournaments and the Elo fit: is the new generation stronger?
 
 Design: docs/design/training.md ("Evaluation").
-Plan: docs/plans/04-training-pipeline.md, step 4 (Decisions rows "Tournament
+Plan: docs/plans/archive/04-training-pipeline.md, step 4 (Decisions rows "Tournament
 protocol" and "Elo fit").
 
 Why measure at all

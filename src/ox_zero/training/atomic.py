@@ -1,6 +1,6 @@
 """Atomic, durable file writes: the one helper behind every file a run writes.
 
-Plan: docs/plans/04-training-pipeline.md, the Decisions rows "The checkpoint
+Plan: docs/plans/archive/04-training-pipeline.md, the Decisions rows "The checkpoint
 is the commit marker" and "Buffer persistence".
 
 Why

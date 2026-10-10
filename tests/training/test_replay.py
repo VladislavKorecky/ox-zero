@@ -9,7 +9,7 @@ together (otherwise augmentation would teach the network wrong moves), and
 that a saved buffer comes back exactly, in the same order, so a resumed run
 draws the same examples.
 
-Plan: docs/plans/04-training-pipeline.md, step 2. Torch-free.
+Plan: docs/plans/archive/04-training-pipeline.md, step 2. Torch-free.
 """
 
 import os

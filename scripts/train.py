@@ -1,6 +1,6 @@
 """Train an OXOX network by AlphaZero self-play: one run directory, resumable.
 
-Plan 04 (docs/plans/04-training-pipeline.md), step 7. A thin wrapper around
+Plan 04 (docs/plans/archive/04-training-pipeline.md), step 7. A thin wrapper around
 `ox_zero.training.run.run`: it turns flags into a `RunConfig`, prints it,
 starts (or resumes) the run, and prints one line per finished generation.
 

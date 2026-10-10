@@ -2,7 +2,7 @@
 
 Design: docs/design/training.md ("Self-play in lockstep", "Training data") and
 docs/design/search.md ("Move selection", "Root noise", "Tree reuse").
-Plan: docs/plans/04-training-pipeline.md, step 1.
+Plan: docs/plans/archive/04-training-pipeline.md, step 1.
 
 Where training data comes from
 ------------------------------

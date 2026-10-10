@@ -4,7 +4,7 @@ Decisions that wait on data. The first implementation step, before any engine co
 
 **Status (2026-09-27):** the game experiments have run ([Results](#results-2026-09-27)) and the constants they could settle are settled ([Decisions](#decisions-2026-09-27)). What is still open waits on training runs, not on more game experiments.
 
-**Status (2026-10-10):** the training pipeline is built ([plan 04](../plans/04-training-pipeline.md#decisions-made-in-this-plan)) and set the training constants provisionally for 6x6; the first 6x6 run is in [Results (2026-10-10)](#results-2026-10-10-the-first-6x6-run). Provisional means "a starting point the run's numbers re-derive", not decided.
+**Status (2026-10-10):** the training pipeline is built ([plan 04](../plans/archive/04-training-pipeline.md#decisions-made-in-this-plan)) and set the training constants provisionally for 6x6; the first 6x6 run is in [Results (2026-10-10)](#results-2026-10-10-the-first-6x6-run). Provisional means "a starting point the run's numbers re-derive", not decided.
 
 ## Experiments to run
 
@@ -126,7 +126,7 @@ The full per-move series is in `scripts/experiments/results/safe_moves.json`. Th
 
 ## Results (2026-10-10): the first 6x6 run
 
-Measured by [plan 04](../plans/04-training-pipeline.md), step 8: `uv run python scripts/train.py --name six-a --size 6 --generations 20 --seed 0 --device cpu`, every other constant at its provisional value (table above). The run was interrupted with Ctrl-C during generation 6 and resumed with the same command; it continued from generation 6 and completed generation 20. About 26 minutes of wall time on the author's 8 GB Apple Silicon laptop. Throughput is in [engineering.md](engineering.md#measured-2026-10-10-self-play-throughput).
+Measured by [plan 04](../plans/archive/04-training-pipeline.md), step 8: `uv run python scripts/train.py --name six-a --size 6 --generations 20 --seed 0 --device cpu`, every other constant at its provisional value (table above). The run was interrupted with Ctrl-C during generation 6 and resumed with the same command; it continued from generation 6 and completed generation 20. About 26 minutes of wall time on the author's 8 GB Apple Silicon laptop. Throughput is in [engineering.md](engineering.md#measured-2026-10-10-self-play-throughput).
 
 "Elo" is the final Bradley-Terry fit over all of the run's matches, generation 0 at 0. "Ladder" is generation `g`'s score against `g − 8`. Mean length is in moves; the rates are over the generation's 128 self-play games.
 

@@ -51,7 +51,7 @@ uv run ox-zero analyze 5,5 6,6 5,6 --model checkpoints_random/gen_000.pt
 
 ## train.py
 
-Trains a network by AlphaZero self-play: a thin wrapper around `ox_zero.training.run.run`. It prints the flags and the resulting `RunConfig`, then one line per generation as each is committed (game length, draw and X-win rates, self-play speed, losses, Elo and the tournament scores, wall time). Every default is a provisional 6x6 constant from [plan 04](../docs/plans/04-training-pipeline.md) ("Provisional constants for 6x6"); `--help` lists one flag per constant. `--simulations` sets both the self-play and the tournament search; `--eval-ladder 0` turns the ladder opponent off.
+Trains a network by AlphaZero self-play: a thin wrapper around `ox_zero.training.run.run`. It prints the flags and the resulting `RunConfig`, then one line per generation as each is committed (game length, draw and X-win rates, self-play speed, losses, Elo and the tournament scores, wall time). Every default is a provisional 6x6 constant from [plan 04](../docs/plans/archive/04-training-pipeline.md) ("Provisional constants for 6x6"); `--help` lists one flag per constant. `--simulations` sets both the self-play and the tournament search; `--eval-ladder 0` turns the ladder opponent off.
 
 The run lives in `runs/<name>/` (default name `<size>x<size>-seed<seed>`; `--root` changes the parent): checkpoints `gen_NNN.pt`, `metrics.jsonl`, `matches.jsonl`, `ratings.json`, `buffer/` and `tensorboard/` (unless `--no-tensorboard`). Not `checkpoints/`: the CLI auto-loads from there and is 12x12 only, so copy or symlink a checkpoint there to use it.
 

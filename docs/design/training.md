@@ -64,7 +64,7 @@ Each move of each self-play game produces one example, recorded when the game en
 
 **Decided:** the buffer holds every position from the most recent `K` generations and samples uniformly from them. This is the paper's "most recent 500,000 games" at our scale. Old generations expire by generation number, not by count. `K` starts around 10 to 20. **Open:** tune `K`, games per generation, and training steps per generation together, since they set how many times each position is seen. The game experiments give a floor for the multiplier: about 13 examples per game on 6x6, 17 on 8x8 and 28 on 12x12 at random strength. Trained games that build walls are expected to be longer, perhaps 50–60 moves on 12x12 ([open-questions.md](open-questions.md#follow-up-safe-moves-over-a-game)); the logged average game length gives the real number.
 
-The constants are set provisionally for 6x6 in [plan 04](../plans/04-training-pipeline.md#decisions-made-in-this-plan) (`K = 10`, 128 games and 50 steps of 256 per generation); the first run's numbers are in [open-questions.md](open-questions.md#results-2026-10-10-the-first-6x6-run).
+The constants are set provisionally for 6x6 in [plan 04](../plans/archive/04-training-pipeline.md#decisions-made-in-this-plan) (`K = 10`, 128 games and 50 steps of 256 per generation); the first run's numbers are in [open-questions.md](open-questions.md#results-2026-10-10-the-first-6x6-run).
 
 **Persisted for resume** (plan 04). The buffer is saved with the run, one file per held generation, so a resumed run trains on the same positions it would have trained on without the interruption, rather than on its own new games only. Each save writes only the newest generation and deletes expired ones.
 
@@ -80,7 +80,7 @@ One checkpoint per generation: weights, optimiser state, all configuration datac
 
 Loss curves are necessary but not sufficient: a network can lower its loss while playing worse. **Decided:**
 
-1. **Checkpoint tournaments with Elo.** Each new generation plays a fixed number of games against a few recent checkpoints, both as X and as O, with search but without root noise. Results feed an Elo calculation over all checkpoints. This is the primary progress metric. The protocol below was decided in [plan 04](../plans/04-training-pipeline.md#decisions-made-in-this-plan) (approved 2026-10-09, ladder added 2026-10-10); its numbers are provisional ([open-questions.md](open-questions.md#constants-waiting-on-the-experiments)).
+1. **Checkpoint tournaments with Elo.** Each new generation plays a fixed number of games against a few recent checkpoints, both as X and as O, with search but without root noise. Results feed an Elo calculation over all checkpoints. This is the primary progress metric. The protocol below was decided in [plan 04](../plans/archive/04-training-pipeline.md#decisions-made-in-this-plan) (approved 2026-10-09, ladder added 2026-10-10); its numbers are provisional ([open-questions.md](open-questions.md#constants-waiting-on-the-experiments)).
 2. **Loss curves.** Policy loss, value loss, and total, per generation.
 
 Not built as metrics (but see [engineering.md](engineering.md#testing) for their role in tests): win rate against random or against the raw network, and agreement with an exact solver on small boards. `scripts/evaluate.py` can play a checkpoint against the uniform search by hand.

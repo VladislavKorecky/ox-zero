@@ -2,7 +2,7 @@
 
 Design: docs/design/network.md ("Loss", "Optimiser", "Symmetries") and
 docs/design/training.md ("The generation loop").
-Plan: docs/plans/04-training-pipeline.md, step 3.
+Plan: docs/plans/archive/04-training-pipeline.md, step 3.
 
 What one generation of training is
 ----------------------------------

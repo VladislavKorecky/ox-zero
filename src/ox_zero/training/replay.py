@@ -2,7 +2,7 @@
 
 Design: docs/design/training.md ("Replay buffer", "Augmentation") and
 docs/design/network.md ("Symmetries").
-Plan: docs/plans/04-training-pipeline.md, step 2.
+Plan: docs/plans/archive/04-training-pipeline.md, step 2.
 
 What the buffer is
 ------------------

@@ -13,7 +13,7 @@ stopped and restarted must produce exactly the same weights as one that ran
 straight through (one RNG, buffer and optimiser state restored), and must
 refuse to continue under a changed configuration.
 
-Plan: docs/plans/04-training-pipeline.md, step 6. Tiny everything, CPU only.
+Plan: docs/plans/archive/04-training-pipeline.md, step 6. Tiny everything, CPU only.
 """
 
 import json

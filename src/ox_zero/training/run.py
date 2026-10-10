@@ -2,7 +2,7 @@
 
 Design: docs/design/training.md ("The generation loop"), docs/design/engineering.md
 ("Configuration and checkpoints", "Devices and determinism").
-Plan: docs/plans/04-training-pipeline.md, step 6, and the Decisions rows
+Plan: docs/plans/archive/04-training-pipeline.md, step 6, and the Decisions rows
 "One RNG for everything", "Buffer persistence", "Metrics format", "The
 checkpoint is the commit marker", "Resume refuses a changed config",
 "Generation 0 is a checkpoint", "Tournament protocol" and "Device".

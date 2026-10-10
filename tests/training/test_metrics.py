@@ -2,7 +2,7 @@
 to TensorBoard.
 
 Design: docs/design/training.md ("Logging": plain files, dashboards are
-readers) and docs/plans/04-training-pipeline.md (Decisions "Metrics format"
+readers) and docs/plans/archive/04-training-pipeline.md (Decisions "Metrics format"
 and "The checkpoint is the commit marker"; step 5).
 """
 

@@ -1,6 +1,6 @@
 """Metrics: one JSON Lines row per trained generation, mirrored to TensorBoard.
 
-Design: docs/design/training.md ("Logging") and docs/plans/04-training-pipeline.md
+Design: docs/design/training.md ("Logging") and docs/plans/archive/04-training-pipeline.md
 (Decisions "Metrics format", "The checkpoint is the commit marker",
 "TensorBoard is a regular dependency").
 

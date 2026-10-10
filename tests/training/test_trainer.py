@@ -10,7 +10,7 @@ built from the config and resumes from a checkpoint, a generation runs the
 configured number of steps and reports their mean losses, and augmentation
 is applied to every sampled batch.
 
-Plan: docs/plans/04-training-pipeline.md, step 3. Tiny network, CPU only.
+Plan: docs/plans/archive/04-training-pipeline.md, step 3. Tiny network, CPU only.
 """
 
 import copy

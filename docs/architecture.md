@@ -12,7 +12,7 @@ Everything importable lives in `src/ox_zero/`. `tests/` mirrors its layout.
 |---------|------|--------|
 | `game` | OXOX rules (`rules.py`) and text notation for cells and positions (`notation.py`). Pure Python: no NumPy, no tensors. | Done (roadmap step 1) |
 | `engine` | Position analysis: the AlphaZero search and network. | Built (step 3), connected to the CLI ([plan 03](plans/archive/03-cli-adapter.md)) |
-| `training` | The self-play training pipeline: lockstep self-play, the replay buffer, the trainer, checkpoint tournaments with Elo, metrics, and the resumable generation loop. | Built (step 4, [plan 04](plans/04-training-pipeline.md)); design in [training.md](design/training.md) |
+| `training` | The self-play training pipeline: lockstep self-play, the replay buffer, the trainer, checkpoint tournaments with Elo, metrics, and the resumable generation loop. | Built (step 4, [plan 04](plans/archive/04-training-pipeline.md)); design in [training.md](design/training.md) |
 | `cli` | The `ox-zero` command: commands, rendering, JSON reports, the sandbox, and the engine port. | Done (step 2), running the engine |
 | `gui` | Graphical analysis interface. | Not started (step 5) |
 

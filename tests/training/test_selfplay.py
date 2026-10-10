@@ -8,7 +8,7 @@ wrong: the labels (`z` signs, `π` rows), the batching (one network call per
 lockstep step, never more than `parallel` positions), and the randomness
 (seeded, and honouring the temperature schedule).
 
-Plan: docs/plans/04-training-pipeline.md, step 1. Torch is imported only by
+Plan: docs/plans/archive/04-training-pipeline.md, step 1. Torch is imported only by
 the network smoke test, locally, so the rest of the file stays fast.
 """
 

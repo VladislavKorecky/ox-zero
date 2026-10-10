@@ -1,6 +1,6 @@
 """Play one checkpoint against another (or against the uniform search) and report the score.
 
-Plan 04 (docs/plans/04-training-pipeline.md), step 7. The same match the
+Plan 04 (docs/plans/archive/04-training-pipeline.md), step 7. The same match the
 training loop's tournament plays (`ox_zero.training.evaluate.play_match`,
 noise-free `EVALUATION` search, random opening cells, every opening played
 once with each colour), between any two players chosen by hand.
