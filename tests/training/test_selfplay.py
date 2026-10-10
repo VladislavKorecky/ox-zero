@@ -322,3 +322,14 @@ def test_network_smoke() -> None:
     assert result.examples.z.shape == (n,)
     for record in result.games:
         assert is_terminal(play(record.moves, size=4))
+
+
+def test_self_play_rejects_expand_root() -> None:
+    # `self_play` drives trees through `lockstep_step`, which never runs the
+    # analysis-only up-front child evaluation, so an `expand_root=True`
+    # config would silently search differently from `SearchTree.simulate`.
+    assert SELF_PLAY.expand_root is False
+    with pytest.raises(ValueError):
+        self_play(
+            UniformEvaluator(), 4, SearchConfig(expand_root=True), SMALL, np.random.default_rng(0)
+        )
