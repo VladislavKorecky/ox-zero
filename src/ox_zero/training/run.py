@@ -48,7 +48,10 @@ One generator also means one state to save: the checkpoint stores it (with
 torch's CPU RNG state, which only the initial weights draw from), and a
 resumed run continues the *same* random sequence. That is what makes a run
 stopped after generation 2 and resumed bit-for-bit equal to one that ran
-straight through (step 6, test 4).
+straight through (step 6, test 4). Bit-for-bit holds on the same device:
+the device is not part of the run config, so resuming on another backend
+(say a run started on `cpu`, resumed on `mps`) is allowed, but changes the
+numerics from that generation on.
 
 Why resume refuses a changed config
 -----------------------------------
