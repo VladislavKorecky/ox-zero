@@ -205,6 +205,18 @@ def test_opponents_for() -> None:
     assert opponents_for(10, EvalConfig(ladder=None)) == [9, 8, 7]
 
 
+def test_eval_config_needs_at_least_one_nearest_opponent() -> None:
+    # Every generation g must play g - 1: that link chains it to the anchor
+    # (generation 0), so the Bradley-Terry fit always has a connected graph.
+    # With opponents=0 generation 1 would play nobody, and the run's Elo fit
+    # (and so the whole run) would fail on its first generation.
+    with pytest.raises(ValueError, match="opponents"):
+        EvalConfig(opponents=0)
+    with pytest.raises(ValueError, match="opponents"):
+        EvalConfig(opponents=-1)
+    assert opponents_for(1, EvalConfig(opponents=1, ladder=None)) == [0]
+
+
 # --- 5. Paired openings ------------------------------------------------------------
 
 

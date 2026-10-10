@@ -67,7 +67,8 @@ class EvalConfig:
     """Which opponents a new generation plays and how many games.
 
     Attributes:
-        opponents: Nearest previous checkpoints played (`g-1`, `g-2`, ...).
+        opponents: Nearest previous checkpoints played (`g-1`, `g-2`, ...);
+            at least 1, so every generation is linked to the one before.
         ladder: Also play generation `g - ladder`, the anti-drift match (see
             `opponents_for`). `None` (or `<= 0`) turns it off.
         games_per_colour: Openings per pairing; each is played with both
@@ -81,8 +82,13 @@ class EvalConfig:
     simulations: int = 100
 
     def __post_init__(self) -> None:
-        if self.opponents < 0:
-            raise ValueError(f"opponents must be non-negative, got {self.opponents}")
+        # At least one nearest opponent: then every generation g plays g - 1,
+        # so the match graph is one chain from the anchor (generation 0) to
+        # the newest generation and the Bradley-Terry fit in `elo_ratings`
+        # always has a connected graph. With 0, generation 1 would play no
+        # match at all and its rating would be undefined (the fit raises).
+        if self.opponents < 1:
+            raise ValueError(f"opponents must be at least 1, got {self.opponents}")
         if self.games_per_colour < 1:
             raise ValueError(f"games_per_colour must be at least 1, got {self.games_per_colour}")
         if self.simulations < 1:
