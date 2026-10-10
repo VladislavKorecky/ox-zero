@@ -289,7 +289,16 @@ def self_play(
     `search` is normally `SELF_PLAY`: Dirichlet noise at every root, so even
     a confident network keeps trying other moves, and `τ = 1` sampling for
     the first `cutoff` moves, so games from the same network differ.
+
+    Raises:
+        ValueError: `search.expand_root` is set. That analysis-only option
+            evaluates every root child up front inside `SearchTree.simulate`;
+            the lockstep driver steps trees through `select` /
+            `expand_and_backup` and never runs it, so accepting the flag
+            would silently search differently from what the config says.
     """
+    if search.expand_root:
+        raise ValueError("self_play does not support expand_root (an analysis-only option)")
     finished_examples: list[Examples] = []
     records: list[GameRecord] = []
     started = 0

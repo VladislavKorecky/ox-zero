@@ -74,6 +74,7 @@ class MetricsWriter:
         self._directory = Path(directory)
         self._directory.mkdir(parents=True, exist_ok=True)
         self._path = self._directory / METRICS_FILE
+        _repair_partial_last_line(self._path)
         self._tensorboard: SummaryWriter | None = None
         if tensorboard:
             # Lazy import: see the module-level note above.
@@ -91,7 +92,19 @@ class MetricsWriter:
         closes, so a crash leaves at most one partial line at the end, which
         `read_metrics` skips. JSON turns integer dict keys (the opponent
         generations in `scores`) into strings; readers must expect that.
+
+        Raises:
+            ValueError: `row` has no integer `generation`. Checked before
+                anything is written, so a bad row never leaves a JSON line
+                without its TensorBoard points (or a row the run loop's
+                purge-by-generation could not place).
         """
+        generation = row.get("generation")
+        # `numbers.Integral` accepts Python and NumPy integers; bool is an
+        # int subclass but `True` is not a generation number.
+        if not isinstance(generation, numbers.Integral) or isinstance(generation, bool):
+            raise ValueError(f"a metrics row needs an integer 'generation', got {generation!r}")
+
         line = json.dumps(row, sort_keys=False)
         with self._path.open("a", encoding="utf-8") as file:
             file.write(line + "\n")
@@ -99,7 +112,7 @@ class MetricsWriter:
         if self._tensorboard is not None:
             # The TensorBoard x-axis is the generation: one point per curve
             # per generation, aligned across all metrics.
-            step = int(row["generation"])
+            step = int(generation)
             for tag, value in _scalars(row):
                 if tag == "generation":
                     continue  # it is the step axis, not a curve
@@ -114,6 +127,37 @@ class MetricsWriter:
         if self._tensorboard is not None:
             self._tensorboard.close()
             self._tensorboard = None
+
+
+def _repair_partial_last_line(path: Path) -> None:
+    """Make `path` end on a complete line before anything is appended to it.
+
+    Every `write` ends its line with `\n`, so a file whose last byte is not
+    `\n` was cut off by a crash. Appending to it as-is would glue the next
+    row onto the fragment; the corrupt line would then no longer be the
+    *last* one, and `read_metrics` (which only forgives a partial last line)
+    would raise on every read from then on. So on open:
+
+    - if the unterminated tail parses as JSON, only the newline was lost:
+      add it, keeping the row;
+    - otherwise it is half a row: truncate the file back to the end of the
+      last complete line.
+    """
+    if not path.exists():
+        return
+    data = path.read_bytes()
+    if not data or data.endswith(b"\n"):
+        return
+    # Index just past the last newline (0 if the only line is partial).
+    start = data.rfind(b"\n") + 1
+    try:
+        json.loads(data[start:])
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        with path.open("r+b") as file:
+            file.truncate(start)
+    else:
+        with path.open("ab") as file:
+            file.write(b"\n")
 
 
 def _scalars(row: Mapping[str, Any], prefix: str = "") -> Iterator[tuple[str, float]]:
