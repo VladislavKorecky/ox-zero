@@ -40,6 +40,13 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0, help="seeds the opening cells")
     parser.add_argument("--device", default="cpu", help="auto | cpu | mps | cuda")
     args = parser.parse_args()
+    # Checked here, before any checkpoint is loaded: `play_match` would raise
+    # on these too, but outside the error handling below, i.e. as a
+    # traceback. At least one opening (no games means no score), and at
+    # least one simulation (the root needs a visit to choose a move).
+    for flag, value in (("--games", args.games), ("--simulations", args.simulations)):
+        if value < 1:
+            parser.error(f"{flag} must be at least 1, got {value}")
     print(f"Parameters: {vars(args)}")
 
     device = select_device(args.device)
