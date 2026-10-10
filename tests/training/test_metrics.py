@@ -8,6 +8,8 @@ and "The checkpoint is the commit marker"; step 5).
 
 import json
 
+import pytest
+
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
 from ox_zero.training.metrics import MetricsWriter, read_metrics
@@ -118,3 +120,48 @@ def test_purge_on_resume_drops_stale_points(tmp_path):
     assert len(at_three) == 1
     assert at_three[0].value == 30.0
     assert [event.step for event in events] == [1, 2, 3]
+
+
+def test_reopening_after_a_crash_truncates_the_partial_line(tmp_path):
+    writer = MetricsWriter(tmp_path, tensorboard=False)
+    writer.write(_row(1))
+    writer.write(_row(2))
+    writer.close()
+
+    # A crash mid-row leaves the second line cut off, with no newline.
+    path = tmp_path / "metrics.jsonl"
+    text = path.read_text()
+    first_end = text.index("\n") + 1
+    path.write_text(text[: first_end + 10])
+
+    # The resumed run reopens the file and writes generation 2 again. Without
+    # repair the new row would be glued onto the fragment, burying a corrupt
+    # line mid-file, and read_metrics would raise from then on.
+    writer = MetricsWriter(tmp_path, tensorboard=False)
+    writer.write(_row(2, loss=9.0))
+    writer.close()
+    rows = read_metrics(path)
+    assert [row["generation"] for row in rows] == [1, 2]
+    assert rows[1]["loss_total"] == 9.0
+
+
+def test_reopening_completes_a_whole_row_missing_only_its_newline(tmp_path):
+    path = tmp_path / "metrics.jsonl"
+    path.write_text(json.dumps(_row(1)) + "\n" + json.dumps(_row(2)))
+    writer = MetricsWriter(tmp_path, tensorboard=False)
+    writer.write(_row(3))
+    writer.close()
+    assert [row["generation"] for row in read_metrics(path)] == [1, 2, 3]
+
+
+@pytest.mark.parametrize("tensorboard", [False, True])
+@pytest.mark.parametrize("bad", [{}, {"generation": "three"}, {"generation": 2.5}, {"generation": True}])
+def test_write_validates_the_generation_before_writing(tmp_path, tensorboard, bad):
+    writer = MetricsWriter(tmp_path, tensorboard=tensorboard)
+    writer.write(_row(1))
+    row = {"loss_total": 1.0, **bad}
+    with pytest.raises(ValueError):
+        writer.write(row)
+    writer.close()
+    # Nothing was appended: the file still holds only the good row.
+    assert [r["generation"] for r in read_metrics(tmp_path / "metrics.jsonl")] == [1]
