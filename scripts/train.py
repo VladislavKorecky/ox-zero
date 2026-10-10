@@ -33,7 +33,14 @@ from ox_zero.engine.network_evaluator import select_device
 from ox_zero.engine.search import SELF_PLAY
 from ox_zero.training.evaluate import EvalConfig
 from ox_zero.training.metrics import METRICS_FILE, read_metrics
-from ox_zero.training.run import RunConfig, run
+from ox_zero.training.run import (
+    ConfigMismatchError,
+    RunConfig,
+    RunDirectoryError,
+    checkpoint_name,
+    latest_generation,
+    run,
+)
 from ox_zero.training.selfplay import SelfPlayConfig
 from ox_zero.training.trainer import TrainConfig
 
@@ -78,7 +85,7 @@ class GenerationPrinter(threading.Thread):
             generation = row["generation"]
             if generation <= self.printed:
                 continue
-            if not (self.run_dir / f"gen_{generation:03d}.pt").is_file():
+            if not (self.run_dir / checkpoint_name(generation)).is_file():
                 break  # not committed yet
             print(format_row(row), flush=True)
             self.printed = generation
@@ -86,16 +93,6 @@ class GenerationPrinter(threading.Thread):
     def run(self) -> None:
         while not self.stop.wait(1.0):
             self.poll()
-
-
-def latest_generation(run_dir: Path) -> int:
-    """The newest committed generation in `run_dir`, or -1 for a new run."""
-    generations = [
-        int(path.stem.removeprefix("gen_"))
-        for path in run_dir.glob("gen_*.pt")
-        if path.stem.removeprefix("gen_").isdigit()
-    ]
-    return max(generations, default=-1)
 
 
 def main() -> None:
@@ -122,13 +119,67 @@ def main() -> None:
     parser.add_argument("--filters", type=int, default=64, help="feature maps per convolution")
     # Tournament (EvalConfig).
     parser.add_argument("--eval-games", type=int, default=20, help="openings per pairing (x2 colours)")
-    parser.add_argument("--eval-opponents", type=int, default=3, help="nearest previous checkpoints played (at least 1)")
+    parser.add_argument(
+        "--eval-opponents", type=int, default=3,
+        help="nearest previous checkpoints played (at least 1)",
+    )
     parser.add_argument("--eval-ladder", type=int, default=8, help="also play g - N; 0 turns it off")
     args = parser.parse_args()
     print(f"Parameters: {vars(args)}")
 
     name = args.name or f"{args.size}x{args.size}-seed{args.seed}"
-    config = RunConfig(
+    try:
+        config = build_config(args, name)
+    except ValueError as error:  # a flag out of range, e.g. --games 0
+        parser.error(str(error))
+    device = select_device(args.device)
+    run_dir = args.root / name
+    print(f"Run: {name} on {device}")
+    print(f"Config: {config}")
+
+    latest = latest_generation(run_dir)
+    if latest is not None:
+        print(f"Resuming from {run_dir / checkpoint_name(latest)}")
+    else:
+        print(f"Starting {run_dir}")
+
+    printer = GenerationPrinter(run_dir, after=latest if latest is not None else 0)
+    printer.start()
+    try:
+        run(config, args.root, device)
+    except KeyboardInterrupt:
+        stop_printer(printer)
+        print(
+            f"\nInterrupted. Run directory {run_dir} is intact; "
+            f"rerun the same command to resume from generation {printer.printed + 1}.",
+            file=sys.stderr,
+        )
+        sys.exit(130)
+    except (ConfigMismatchError, RunDirectoryError) as error:
+        # The two refusals a user can cause (a changed flag on resume, a
+        # directory with an old run's files). Any other exception is a bug
+        # and keeps its traceback (the `finally` still stops the printer).
+        stop_printer(printer)
+        sys.exit(f"error: {error}")
+    finally:
+        stop_printer(printer)
+    print(f"Done: {run_dir} is at generation {latest_generation(run_dir)}")
+
+
+def stop_printer(printer: GenerationPrinter) -> None:
+    """Stop the printer thread, wait for it, then print what it has not yet.
+
+    Idempotent (a second call finds nothing new to print), so every exit path
+    of `main` can call it.
+    """
+    printer.stop.set()
+    printer.join()
+    printer.poll()  # the last generation, committed after the final poll
+
+
+def build_config(args: argparse.Namespace, name: str) -> RunConfig:
+    """The `RunConfig` the flags describe. Raises `ValueError` for a bad value."""
+    return RunConfig(
         name=name,
         size=args.size,
         seed=args.seed,
@@ -154,38 +205,6 @@ def main() -> None:
         ),
         tensorboard=not args.no_tensorboard,
     )
-    device = select_device(args.device)
-    run_dir = args.root / name
-    print(f"Run: {name} on {device}")
-    print(f"Config: {config}")
-
-    latest = latest_generation(run_dir)
-    if latest >= 0:
-        print(f"Resuming from {run_dir / f'gen_{latest:03d}.pt'}")
-    else:
-        print(f"Starting {run_dir}")
-
-    printer = GenerationPrinter(run_dir, after=max(latest, 0))
-    printer.start()
-    try:
-        run(config, args.root, device)
-    except KeyboardInterrupt:
-        printer.stop.set()
-        printer.join()
-        printer.poll()
-        print(
-            f"\nInterrupted. Run directory {run_dir} is intact; "
-            f"rerun the same command to resume from generation {printer.printed + 1}.",
-            file=sys.stderr,
-        )
-        sys.exit(130)
-    except ValueError as error:  # e.g. resume with a changed configuration
-        printer.stop.set()
-        sys.exit(f"error: {error}")
-    printer.stop.set()
-    printer.join()
-    printer.poll()  # the last generation, committed after the final poll
-    print(f"Done: {run_dir} is at generation {latest_generation(run_dir)}")
 
 
 if __name__ == "__main__":

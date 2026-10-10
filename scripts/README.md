@@ -55,7 +55,7 @@ Trains a network by AlphaZero self-play: a thin wrapper around `ox_zero.training
 
 The run lives in `runs/<name>/` (default name `<size>x<size>-seed<seed>`; `--root` changes the parent): checkpoints `gen_NNN.pt`, `metrics.jsonl`, `matches.jsonl`, `ratings.json`, `buffer/` and `tensorboard/` (unless `--no-tensorboard`). Not `checkpoints/`: the CLI auto-loads from there and is 12x12 only, so copy or symlink a checkpoint there to use it.
 
-Resume is automatic. Ctrl-C at any moment leaves a valid run (the checkpoint is written last, so an interrupted generation is re-run); rerun the same command to continue, or raise `--generations` to extend a finished run. Any other changed flag is refused: a new configuration needs a new `--name`.
+Resume is automatic. Ctrl-C at any moment leaves a valid run (the checkpoint is written last, so an interrupted generation is re-run); rerun the same command to continue, or raise `--generations` to extend a finished run. Any other changed flag is refused: a new configuration needs a new `--name`. A directory that holds an old run's `metrics.jsonl`, `matches.jsonl`, `ratings.json` or buffer files but no `gen_*.pt` is refused too (nothing is deleted): remove those files or pick another `--name`. `--games` and `--eval-opponents` must be at least 1.
 
 ```bash
 uv run python scripts/train.py --size 6                     # runs/6x6-seed0, 20 generations, --device auto
