@@ -13,6 +13,7 @@ Plan: docs/plans/04-training-pipeline.md, step 2. Torch-free.
 """
 
 import os
+import stat
 
 import numpy as np
 import pytest
@@ -244,10 +245,17 @@ def test_save_and_load_round_trip(tmp_path) -> None:
 def test_load_sorts_by_generation_number(tmp_path) -> None:
     directory = tmp_path / "buffer"
     # Write the files out of order (3 before 2), each from its own buffer.
+    # Each buffer saves into its own scratch directory and the file is moved
+    # over: `save` deletes files of generations it does not hold, so saving
+    # the second buffer into `directory` directly would delete the first's.
+    directory.mkdir()
     for generation, tag in ((3, 3.0), (2, 2.0)):
         single = ReplayBuffer(size=3, generations=5)
         single.add(tagged(3, generation, tag), generation=generation)
-        single.save(directory)
+        scratch = tmp_path / f"scratch_{generation}"
+        single.save(scratch)
+        name = f"gen_{generation:03d}.npz"
+        os.replace(scratch / name, directory / name)
     loaded = ReplayBuffer.load(directory, size=3, generations=5)
     assert loaded.generations == [2, 3]
     assert len(loaded) == 2 + 3
@@ -408,6 +416,68 @@ def test_save_fsyncs_before_rename(tmp_path, monkeypatch: pytest.MonkeyPatch) ->
     buffer.save(tmp_path)
     assert "replace" in events
     assert "fsync" in events[: events.index("replace")]
+
+
+def test_save_fsyncs_the_directory_after_the_renames(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A rename is a change to the *directory*; until the directory itself is
+    # fsynced, a power loss can forget it. So the last fsync must be on a
+    # directory descriptor, after every replace and unlink.
+    events: list[str] = []
+    real_fsync, real_replace, real_unlink = os.fsync, os.replace, replay_module.Path.unlink
+
+    def fsync(fd: int) -> None:
+        events.append("fsync-dir" if stat.S_ISDIR(os.fstat(fd).st_mode) else "fsync-file")
+        real_fsync(fd)
+
+    def replace(src, dst) -> None:
+        events.append("replace")
+        real_replace(src, dst)
+
+    def unlink(self, missing_ok: bool = False) -> None:
+        events.append("unlink")
+        real_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(replay_module.os, "fsync", fsync)
+    monkeypatch.setattr(replay_module.os, "replace", replace)
+    monkeypatch.setattr(replay_module.Path, "unlink", unlink)
+    buffer = ReplayBuffer(size=3, generations=1)
+    buffer.add(tagged(3, 1, 0.0), generation=1)
+    buffer.save(tmp_path)
+    buffer.add(tagged(3, 1, 0.0), generation=2)  # expires generation 1
+    events.clear()
+    buffer.save(tmp_path)
+    assert "replace" in events and "unlink" in events
+    assert events[-1] == "fsync-dir"
+
+
+def test_save_deletes_files_of_generations_not_held(tmp_path) -> None:
+    # `drop_above` is memory-only; a dropped generation that is never re-added
+    # must not survive on disk, or a later `load` would bring it back.
+    directory = tmp_path / "buffer"
+    buffer = ReplayBuffer(size=3, generations=3)
+    for generation in (1, 2, 3):
+        buffer.add(tagged(3, 1, float(generation)), generation=generation)
+    buffer.save(directory)
+    buffer.drop_above(1)
+    buffer.save(directory)
+    assert sorted(p.name for p in directory.iterdir()) == ["gen_001.npz"]
+    assert ReplayBuffer.load(directory, size=3, generations=3).generations == [1]
+
+
+def test_saved_files_follow_the_umask(tmp_path) -> None:
+    # `mkstemp` creates owner-only (0600) files and the rename keeps the
+    # mode; saved files should get the ordinary 0666 & ~umask, like any file
+    # `open()` creates.
+    old_umask = os.umask(0o022)
+    try:
+        buffer = ReplayBuffer(size=3, generations=2)
+        buffer.add(tagged(3, 1, 0.0), generation=1)
+        buffer.save(tmp_path)
+    finally:
+        os.umask(old_umask)
+    assert stat.S_IMODE((tmp_path / "gen_001.npz").stat().st_mode) == 0o644
 
 
 def test_stale_temporary_files_are_ignored_and_removed(tmp_path) -> None:
