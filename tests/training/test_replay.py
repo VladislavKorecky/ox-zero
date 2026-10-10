@@ -497,31 +497,56 @@ def test_stale_temporary_files_are_ignored_and_removed(tmp_path) -> None:
     assert sorted(p.name for p in directory.iterdir()) == ["gen_001.npz"]
 
 
-# --- Sampling caches the concatenation ----------------------------------------
+# --- Sampling without a concatenated copy -------------------------------------
 
 
-def test_sample_caches_the_concatenation(monkeypatch: pytest.MonkeyPatch) -> None:
+def _distinct(size: int, n: int, start: float) -> Examples:
+    """`n` examples whose rows differ in every array (planes, pi and z), so a
+    wrong row in any of the three would show."""
+    rng = np.random.default_rng(int(start))
+    cells = size * size
+    planes = rng.integers(0, 2, size=(n, 3, size, size), dtype=np.uint8)
+    pi = rng.random((n, cells), dtype=np.float32)
+    pi /= pi.sum(axis=1, keepdims=True)
+    z = (start + np.arange(n)).astype(np.float32)
+    return Examples(planes=planes, pi=pi, z=z)
+
+
+def test_sample_matches_a_concatenate_then_index_reference() -> None:
+    """`sample` maps global row indices to (generation, row) instead of
+    concatenating the buffer. It must pick exactly the rows a plain
+    concatenation in ascending generation order would, for the same rng."""
+    buffer = ReplayBuffer(size=3, generations=4)
+    # Uneven sizes, added out of order, one generation in two batches.
+    parts = {2: _distinct(3, 5, 200.0), 1: _distinct(3, 1, 100.0), 4: _distinct(3, 7, 400.0)}
+    for generation, examples in parts.items():
+        buffer.add(examples, generation)
+    extra = _distinct(3, 3, 210.0)
+    buffer.add(extra, 2)
+    parts[2] = Examples.concatenate([parts[2], extra])
+
+    reference = Examples.concatenate([parts[g] for g in sorted(parts)])
+    for seed in range(5):
+        indices = np.random.default_rng(seed).integers(0, len(reference), size=64)
+        batch = buffer.sample(64, np.random.default_rng(seed))
+        np.testing.assert_array_equal(batch.planes, reference.planes[indices].astype(np.float32))
+        np.testing.assert_array_equal(batch.pi, reference.pi[indices])
+        np.testing.assert_array_equal(batch.z, reference.z[indices])
+        assert batch.planes.dtype == np.float32
+
+
+def test_sample_does_not_concatenate_the_buffer(monkeypatch: pytest.MonkeyPatch) -> None:
     buffer = ReplayBuffer(size=3, generations=3)
     buffer.add(tagged(3, 2, 1.0), generation=1)
     buffer.add(tagged(3, 2, 2.0), generation=2)
-    reference = buffer.sample(50, np.random.default_rng(9))
 
-    calls = 0
-    real = Examples.concatenate
+    def refuse(parts):
+        raise AssertionError("sample must not copy the whole buffer")
 
-    def counting(parts):
-        nonlocal calls
-        calls += 1
-        return real(parts)
-
-    monkeypatch.setattr(Examples, "concatenate", staticmethod(counting))
-    first = buffer.sample(50, np.random.default_rng(9))
-    second = buffer.sample(50, np.random.default_rng(9))
-    assert calls == 0  # served from the cache built by the first sample
-    np.testing.assert_array_equal(first.z, reference.z)
-    np.testing.assert_array_equal(second.z, reference.z)
-
-    # Mutations invalidate the cache: new rows show up in the next sample.
+    monkeypatch.setattr(Examples, "concatenate", staticmethod(refuse))
+    buffer.sample(50, np.random.default_rng(9))
+    # Mutations show up in the next sample (nothing stale is cached).
+    monkeypatch.undo()
     buffer.add(tagged(3, 2, 3.0), generation=3)
     assert 3.0 in buffer.sample(300, np.random.default_rng(0)).z
     buffer.drop_above(2)

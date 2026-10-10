@@ -134,16 +134,11 @@ class ReplayBuffer:
         # stay clean, so a save still writes only what changed.
         self._clean: set[int] = set()
         self._clean_directory: Path | None = None
-        # `sample` needs the held generations as one array set (ascending
-        # generation order). Building it copies the whole buffer, so it is
-        # cached here and invalidated by every mutation (`_changed`).
-        self._concatenated: Examples | None = None
 
     def _changed(self, generation: int) -> None:
         """Bookkeeping after `generation`'s examples were modified or removed:
-        it no longer matches its file, and the sampling cache is stale."""
+        it no longer matches its file."""
         self._clean.discard(generation)
-        self._concatenated = None
 
     def add(self, examples: Examples, generation: int) -> None:
         """Add one batch of examples for `generation`, then expire old generations.
@@ -201,22 +196,37 @@ class ReplayBuffer:
         if total == 0:
             raise ValueError("cannot sample from an empty replay buffer")
         indices = rng.integers(0, total, size=batch_size)
-        # Concatenating costs one copy of the whole buffer, and the trainer
-        # samples many mini-batches between mutations, so the result is
-        # cached and rebuilt only after `add` / `drop_above` change the
-        # buffer. The layout (ascending generations) is the same either way,
-        # so caching never changes which rows an rng draws.
-        if self._concatenated is None:
-            self._concatenated = Examples.concatenate(
-                [self._by_generation[g] for g in self.generations]
-            )
-        held = self._concatenated
-        return Batch(
-            # uint8 0/1 -> float32 0.0/1.0: the network's input dtype.
-            planes=held.planes[indices].astype(np.float32),
-            pi=held.pi[indices],
-            z=held.z[indices],
-        )
+
+        # How this works: the indices above are positions in the *virtual*
+        # concatenation of the held generations (ascending generation order),
+        # but the buffer is never actually concatenated, since that would
+        # hold a second full copy of the training set in memory. Instead,
+        # with `ends` the cumulative lengths (generation k owns the global
+        # rows `[ends[k] - len_k, ends[k])`), `searchsorted(ends, i, "right")`
+        # is the first k with `ends[k] > i`, i.e. the generation holding row
+        # `i`, and `i - start[k]` is the row inside it. Then each generation
+        # is gathered with one fancy-indexing call, written back into the
+        # batch at the positions it was drawn for, so the batch order (and
+        # so the examples an rng state draws) is the concatenation's.
+        parts = [self._by_generation[g] for g in self.generations]
+        lengths = np.array([len(part) for part in parts])
+        ends = np.cumsum(lengths)
+        starts = ends - lengths
+        which = np.searchsorted(ends, indices, side="right")
+        rows = indices - starts[which]
+
+        first = parts[0]
+        # uint8 0/1 planes become float32 0.0/1.0, the network's input dtype.
+        planes = np.empty((batch_size, *first.planes.shape[1:]), dtype=np.float32)
+        pi = np.empty((batch_size, *first.pi.shape[1:]), dtype=first.pi.dtype)
+        z = np.empty(batch_size, dtype=first.z.dtype)
+        for k in np.unique(which):
+            positions = which == k
+            part, picked = parts[k], rows[positions]
+            planes[positions] = part.planes[picked]
+            pi[positions] = part.pi[picked]
+            z[positions] = part.z[picked]
+        return Batch(planes=planes, pi=pi, z=z)
 
     def save(self, directory: Path) -> None:
         """Persist to `directory/gen_NNN.npz`, one file per held generation.
