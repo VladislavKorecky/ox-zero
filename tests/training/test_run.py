@@ -378,3 +378,46 @@ def test_checkpoint_name_and_latest_generation(tmp_path):
     (tmp_path / "sub").mkdir()
     (tmp_path / "sub" / "gen_009.pt").write_bytes(b"")  # not recursive
     assert latest_generation(tmp_path) == 2
+
+
+# 12. Resume refits ratings.json from the kept matches -----------------------------
+
+
+def test_resume_drops_an_uncommitted_generations_rating(tmp_path):
+    """A crash after generation 3's ratings write but before `gen_003.pt` leaves
+    a rating for a generation that never happened. Resume truncates
+    matches.jsonl to the latest checkpoint and must refit ratings.json from
+    what is left, so the stale "3" is gone even before generation 3 is redone.
+    Resuming to the generation already reached runs no generation, so what is
+    checked is exactly the cleanup."""
+    config = tiny(generations=2)
+    run_dir = run(config, root=tmp_path, device=CPU)
+    committed = ratings(run_dir)
+
+    with (run_dir / "matches.jsonl").open("a") as file:
+        row = {"generation": 3, "opponent": 2, "wins": 2, "draws": 0, "losses": 0, "score": 1.0}
+        file.write(json.dumps(row) + "\n")
+    (run_dir / "ratings.json").write_text(json.dumps({**committed, "3": 123.0}))
+
+    run(config, root=tmp_path, device=CPU)
+
+    assert pairings(run_dir) == [(1, 0), (2, 1)]
+    assert ratings(run_dir) == committed
+
+
+def test_resume_at_generation_zero_removes_stale_ratings(tmp_path):
+    """Only gen_000.pt committed: a fresh run has no ratings.json at that point
+    (generation 1 writes the first), so resume removes a stale one."""
+    config = tiny(generations=0)
+    run_dir = run(config, root=tmp_path, device=CPU)
+    assert not (run_dir / "ratings.json").exists()
+
+    with (run_dir / "matches.jsonl").open("a") as file:
+        row = {"generation": 1, "opponent": 0, "wins": 2, "draws": 0, "losses": 0, "score": 1.0}
+        file.write(json.dumps(row) + "\n")
+    (run_dir / "ratings.json").write_text(json.dumps({"0": 0.0, "1": 50.0}))
+
+    run(config, root=tmp_path, device=CPU)
+
+    assert pairings(run_dir) == []
+    assert not (run_dir / "ratings.json").exists()

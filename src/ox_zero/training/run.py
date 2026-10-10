@@ -79,7 +79,7 @@ from ox_zero.engine.network import Network, NetworkConfig
 from ox_zero.engine.network_evaluator import NetworkEvaluator, select_device
 from ox_zero.engine.search import SELF_PLAY, SearchConfig
 from ox_zero.game.rules import Mark
-from ox_zero.training.atomic import atomic_write_text
+from ox_zero.training.atomic import atomic_write_text, fsync_directory
 from ox_zero.training.checkpoint import Checkpoint, load_checkpoint, save_checkpoint
 from ox_zero.training.evaluate import (
     EVALUATION,
@@ -217,6 +217,10 @@ def run(config: RunConfig, root: Path = Path("runs"), device: torch.device | Non
         # latest checkpoint is a leftover of an interrupted generation.
         _truncate_rows(run_dir / METRICS_FILE, latest)
         _truncate_rows(run_dir / MATCHES_FILE, latest)
+        # ratings.json is derived from matches.jsonl, so refit it from the
+        # rows just kept: an interrupted generation may already have written
+        # its own rating, for a generation that (by the rule) never happened.
+        _write_ratings(run_dir)
         if buffer_dir.is_dir():
             # `upto` also deletes buffer files above the checkpoint: the buffer
             # is saved just before the checkpoint, so a crash between the two
@@ -318,19 +322,7 @@ def _generation(
     with matches_path.open("a", encoding="utf-8") as file:
         for row in match_rows:
             file.write(json.dumps(row) + "\n")
-    # Bradley-Terry over *every* match of the run so far, anchored at
-    # generation 0, so earlier generations' ratings are refined too.
-    table = elo_ratings(
-        [
-            (row["generation"], row["opponent"], row["wins"], row["draws"], row["losses"])
-            for row in read_metrics(matches_path)
-        ],
-        anchor=0,
-    )
-    atomic_write_text(
-        run_dir / RATINGS_FILE,
-        json.dumps({str(g): table[g] for g in sorted(table)}, indent=1) + "\n",
-    )
+    table = _write_ratings(run_dir)
 
     games = result.games
     lengths = [len(record.moves) for record in games]
@@ -364,6 +356,34 @@ def _generation(
 
     # 6. The commit marker.
     _save(run_dir, generation, network, trainer, config, rng)
+
+
+def _write_ratings(run_dir: Path) -> dict[int, float]:
+    """Refit the Elo table from `matches.jsonl`, write `ratings.json`, return it.
+
+    Bradley-Terry over *every* match of the run so far, anchored at
+    generation 0, so earlier generations' ratings are refined too. With no
+    matches (only `gen_000.pt` committed) there is nothing to fit, and a
+    fresh run has no `ratings.json` at that point either (generation 1
+    writes the first), so any existing one is removed.
+    """
+    matches_path = run_dir / MATCHES_FILE
+    ratings_path = run_dir / RATINGS_FILE
+    rows = read_metrics(matches_path) if matches_path.exists() else []
+    if not rows:
+        if ratings_path.exists():
+            ratings_path.unlink()
+            fsync_directory(run_dir)  # make the deletion durable too
+        return {}
+    table = elo_ratings(
+        [(row["generation"], row["opponent"], row["wins"], row["draws"], row["losses"])
+         for row in rows],
+        anchor=0,
+    )
+    atomic_write_text(
+        ratings_path, json.dumps({str(g): table[g] for g in sorted(table)}, indent=1) + "\n"
+    )
+    return table
 
 
 def checkpoint_name(generation: int) -> str:
