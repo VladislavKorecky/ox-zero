@@ -295,7 +295,7 @@ class ReplayBuffer:
                 path.unlink()
 
         # Make the renames and deletions durable (see the docstring).
-        _fsync_directory(directory)
+        fsync_directory(directory)
 
     @classmethod
     def load(
@@ -384,7 +384,7 @@ def _current_umask() -> int:
     return umask
 
 
-def _fsync_directory(directory: Path) -> None:
+def fsync_directory(directory: Path) -> None:
     """`fsync` the directory itself, making renames and unlinks in it durable.
 
     On POSIX a file's name lives in its directory's entries, so after

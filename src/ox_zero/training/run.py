@@ -89,7 +89,7 @@ from ox_zero.training.evaluate import (
     play_match,
 )
 from ox_zero.training.metrics import METRICS_FILE, MetricsWriter, read_metrics
-from ox_zero.training.replay import ReplayBuffer
+from ox_zero.training.replay import ReplayBuffer, fsync_directory
 from ox_zero.training.selfplay import SelfPlayConfig, self_play
 from ox_zero.training.trainer import Trainer, TrainConfig
 
@@ -485,7 +485,20 @@ def _truncate_rows(path: Path, latest: int) -> None:
 
 
 def _write_atomically(path: Path, text: str) -> None:
-    """Write to a temporary file, then rename over `path` (all or nothing)."""
+    """Write to a temporary file, then rename over `path`: all or nothing, durably.
+
+    Same pattern as `ReplayBuffer.save`. The rename makes the write atomic
+    (a reader sees the old file or the new one, never half of either). The
+    two fsyncs make it survive a power loss: the file's data is forced to
+    disk *before* the rename (otherwise the rename could persist while the
+    data did not, leaving an empty file under the final name), and the
+    directory is synced *after* it, since the new name lives in the
+    directory's entries.
+    """
     temporary = path.with_name(f".{path.name}.tmp")
-    temporary.write_text(text, encoding="utf-8")
+    with temporary.open("w", encoding="utf-8") as file:
+        file.write(text)
+        file.flush()  # Python's buffer -> the OS
+        os.fsync(file.fileno())  # the OS's page cache -> the disk
     os.replace(temporary, path)
+    fsync_directory(path.parent)
