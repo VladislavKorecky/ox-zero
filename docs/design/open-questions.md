@@ -15,6 +15,7 @@ Decisions that wait on data. The first implementation step, before any engine co
 | **Branching factor over a game** | Average legal moves per move number, per board size | Dirichlet `α = 10 / avg legal moves`, and how to define "average" (over positions in typical games, not over the empty board) |
 | **Exact solutions of 3×3, 4×4, maybe 5×5** | Minimax with memoisation on the immutable `State` | The solver fixture for search tests; also tells us who wins small boards, a sanity check on the rules and on the engine's first results |
 | **Safe moves over a game** (added after the first results) | Greedy play, counting the moves that do not lose on the spot at each move number | Whether the game is decided by running out of safe moves (a counting problem: global pooling, MCTS-Solver), and a better guide to trained-game length than random play |
+| **Is 6x6 an O win, or is self-play hiding X's defences?** (added after the first 6x6 run) | Re-run the 6x6 baseline with a longer temperature cutoff (4–5 moves) and more simulations, and watch X's self-play win rate; optionally solve 5x5 exactly (needs symmetry canonicalisation first, see [exact solutions](#exact-solutions)) to see whether an odd board breaks the pattern | Whether the O dominance in the [first 6x6 run](#results-2026-10-10-the-first-6x6-run) is a property of the game or of the exploration settings; feeds the temperature cutoff and the parity/global-pooling questions |
 
 ## Constants waiting on the experiments
 
@@ -166,6 +167,15 @@ Observations from one seeded run, not conclusions beyond it.
 - **Most of the Elo gain is early.** Elo rose steeply to about 700 by generation 5 and then slowly to 818 at generation 20; later generations differ by small margins (scores against the previous generation 0.45–0.62 from generation 5 on).
 - **The ladder is informative at distance 8.** Ladder scores fell from sweeps (1.00 at generations 8 and 9) to 0.55–0.60 at generations 15–20, so at `ladder = 8` it measures something rather than reporting sweeps; no reason to shorten it.
 - **Strength against the uniform search is moderate.** `gen_020` sweeps the random network but beats the uniform search only 33–7, with 6 of its 7 losses as X: the side self-play has learned to lose with.
+
+### Why O dominates: the working theory (2026-10-10)
+
+Reasoning written down after the run so it is not lost. A hypothesis, not a result.
+
+- **Avoidance and parity.** From the [safe-moves follow-up](#follow-up-safe-moves-over-a-game): most moves soon hand the opponent a completion, and a game ends when the side to move has no safe move. Both sides draw on one shared supply of safe cells, so the endgame is a count, and the side that moves first meets the empty supply first, the same tempo problem as Dots and Boxes or misère games. Evidence that fits: 4x4 is a proven O win with every X first move losing; O leads at every size under greedy play; here, O wins 96–99% of self-play from generation 15 on.
+- **Not "O always wins".** `gen_020` won all 20 X games against `gen_000` and 14 of 20 against the uniform search. X loses when strong plays strong, not against weak play.
+- **A mirror strategy for O was tried and does not work as stated.** The natural candidate for a second-player win is: O answers X's move with the cell rotated 180° about the centre. Rotating the board and swapping X with O maps every alternating line to an alternating line (`XOX` ↔ `OXO`). On an even board no line of three is its own image, because the centre is a cell corner, not a cell. So after each O reply the position is invariant under rotate-and-swap. The strategy still fails, because threats belong to a mark: X can play next to an existing O (`X O _`), creating a cell only X can complete. O must block it instead of mirroring, and the mirrored reply would create an O threat while leaving X's threat open. So symmetry gives no simple proof; whether some repaired version works is open.
+- **The alternative explanation.** Self-play samples only the first 3 moves (temperature cutoff) at 100 simulations per move, so it may simply never explore X's defences. That would make the O dominance a property of the training settings, not of the game. The experiment that separates the two is in [Experiments to run](#experiments-to-run).
 
 **Constants to look at next** (suggestions for the tuning follow-up, not decisions):
 
