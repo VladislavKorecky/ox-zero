@@ -121,12 +121,27 @@ class MatchResult:
     Attributes:
         wins, draws, losses: Games `a` won, drew, lost.
         openings: The first moves used, one per pair of games.
+        as_x, as_o: `(wins, draws, losses)` for `a` in the games where it
+            played X / O. The totals above are their sums. The split matters
+            because the colours are not equal (4x4 is an O win): a 50% score
+            can be "wins every O game, loses every X game", which says the
+            players are equally strong in a very different way than 50% draws.
     """
 
     wins: int
     draws: int
     losses: int
     openings: tuple[Cell, ...]
+    as_x: tuple[int, int, int]
+    as_o: tuple[int, int, int]
+
+    def __post_init__(self) -> None:
+        totals = tuple(x + o for x, o in zip(self.as_x, self.as_o, strict=True))
+        if totals != (self.wins, self.draws, self.losses):
+            raise ValueError(
+                f"colour split {self.as_x} + {self.as_o} does not sum to "
+                f"(wins, draws, losses) = {(self.wins, self.draws, self.losses)}"
+            )
 
     @property
     def games(self) -> int:
@@ -307,16 +322,27 @@ def play_match(
             game.play_if_ready()
         live = [game for game in live if not game.done]
 
-    wins = draws = losses = 0
+    # Tally per colour of `a`: [wins, draws, losses] for a-as-X and a-as-O.
+    split: dict[Mark, list[int]] = {Mark.X: [0, 0, 0], Mark.O: [0, 0, 0]}
     for game in games:
         winner = game.final.winner
         if winner is None:
-            draws += 1
+            outcome = 1  # draw
         elif winner is game.a_plays:
-            wins += 1
+            outcome = 0  # a won
         else:
-            losses += 1
-    return MatchResult(wins=wins, draws=draws, losses=losses, openings=openings)
+            outcome = 2  # a lost
+        split[game.a_plays][outcome] += 1
+    as_x = (split[Mark.X][0], split[Mark.X][1], split[Mark.X][2])
+    as_o = (split[Mark.O][0], split[Mark.O][1], split[Mark.O][2])
+    return MatchResult(
+        wins=as_x[0] + as_o[0],
+        draws=as_x[1] + as_o[1],
+        losses=as_x[2] + as_o[2],
+        openings=openings,
+        as_x=as_x,
+        as_o=as_o,
+    )
 
 
 def elo_difference(score: float) -> float:

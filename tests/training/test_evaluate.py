@@ -260,6 +260,24 @@ def test_oracle_wins_every_game_as_o(solver: Solver, recorded_games: list[MatchG
         assert game.done
         assert game.final.winner is Mark.O
     assert result.wins >= 4
+    # The colour split, from the oracle's (a's) perspective: every O game won.
+    assert result.as_o == (4, 0, 0)
+
+
+def test_colour_split_sums_to_the_totals() -> None:
+    result = play_match(
+        UniformEvaluator(), FirstCellEvaluator(), size=3, games_per_colour=3,
+        simulations=4, rng=np.random.default_rng(5),
+    )
+    assert sum(result.as_x) == sum(result.as_o) == 3
+    totals = tuple(x + o for x, o in zip(result.as_x, result.as_o))
+    assert totals == (result.wins, result.draws, result.losses)
+
+
+def test_match_result_rejects_inconsistent_totals() -> None:
+    MatchResult(wins=1, draws=1, losses=0, openings=((0, 0),), as_x=(1, 0, 0), as_o=(0, 1, 0))
+    with pytest.raises(ValueError):
+        MatchResult(wins=2, draws=0, losses=0, openings=((0, 0),), as_x=(1, 0, 0), as_o=(0, 1, 0))
 
 
 # --- 7. Two evaluators, two trees, two batches -------------------------------------
