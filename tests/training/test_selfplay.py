@@ -29,6 +29,7 @@ from ox_zero.game.rules import (
     is_terminal,
     play,
 )
+from ox_zero.training.replay import legal_from_planes
 from ox_zero.training.selfplay import (
     Examples,
     GameRecord,
@@ -38,18 +39,6 @@ from ox_zero.training.selfplay import (
     lockstep_step,
     self_play,
 )
-
-
-def legal_from_planes(planes: np.ndarray) -> np.ndarray:
-    """`bool [N, S²]`: empty cells, i.e. planes 0 and 1 both zero.
-
-    A stand-in for `training.replay.legal_from_planes`, which plan 04 builds
-    in step 2 (after this one). Same definition: a cell is legal in a
-    non-terminal position exactly when neither side has a mark there, and
-    recorded positions are never terminal.
-    """
-    n = planes.shape[0]
-    return ((planes[:, 0] == 0) & (planes[:, 1] == 0)).reshape(n, -1)
 
 
 def uniform_pi(state: State) -> np.ndarray:
