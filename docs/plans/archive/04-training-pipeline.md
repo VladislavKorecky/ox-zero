@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Ready. Decisions approved by Vláďa on 2026-10-09, ladder opponent added and four rounds of code-review findings folded in 2026-10-10 (PR #18); implementation starts on `feat/training-pipeline`. |
+| Status | Implemented and merged (PR #19, 2026-10-10). The first 6x6 run is recorded in [open-questions.md](../../design/open-questions.md#results-2026-10-10-the-first-6x6-run). |
 | Branches | Plan: `plan/training-pipeline`. Implementation: `feat/training-pipeline`. |
 | Design references | [training.md](../../design/training.md) (the generation loop, lockstep self-play, training data, replay buffer, evaluation, logging), [network.md](../../design/network.md) (loss, optimiser, augmentation), [engineering.md](../../design/engineering.md) (module layout, configuration and checkpoints, devices and determinism, testing), [search.md](../../design/search.md) (self-play move selection, root noise, tree reuse), [open-questions.md](../../design/open-questions.md) (the constants this plan sets provisionally) |
 | Depends on | [Plan 03](03-cli-adapter.md) merged (PR #15): `training.checkpoint` (`save_checkpoint`, `load_checkpoint`, `latest_checkpoint`), `engine.search.SearchTree` with its two-phase API, `engine.network.alphazero_loss`, `engine.encoding` symmetries, `cli.adapter.load_engine`. |
