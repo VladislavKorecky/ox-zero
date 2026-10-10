@@ -165,6 +165,14 @@ def test_elo_ratings_players_are_generations_and_anchor_must_exist() -> None:
         elo_ratings([(1, 0, 20, 0, 20)], anchor=7)
 
 
+def test_elo_ratings_rejects_players_disconnected_from_the_anchor() -> None:
+    # 6 and 5 only ever played each other: their difference is measured, but
+    # nothing ties either to the anchor, so their absolute ratings would be
+    # arbitrary. That must be an error, naming them, not a silent number.
+    with pytest.raises(ValueError, match=r"5.*6"):
+        elo_ratings([(1, 0, 20, 0, 20), (6, 5, 20, 0, 20)])
+
+
 def test_ladder_match_corrects_a_drifting_chain() -> None:
     # Why the ladder exists: with only neighbour matches, a late generation's
     # rating is the sum of many noisy links. Here every link is 55% (22 of 40,

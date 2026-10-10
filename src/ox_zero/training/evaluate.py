@@ -374,7 +374,8 @@ def elo_ratings(
     with a cap of 10,000 sweeps.
 
     Raises:
-        ValueError: `anchor` is not one of the players.
+        ValueError: `anchor` is not one of the players, or some players are
+            not connected to it through the match graph.
     """
     # Aggregate per unordered pair: games and points for the lower-numbered
     # player. Each pair then gets exactly one virtual draw.
@@ -392,6 +393,31 @@ def elo_ratings(
     players = sorted({p for pair in games for p in pair})
     if anchor not in players:
         raise ValueError(f"anchor {anchor} has played no match; players are {players}")
+
+    # Connectivity: the matches only measure differences along pairs that
+    # played, so a player's rating relative to the anchor exists only if a
+    # chain of matches links them. A group that never (even indirectly)
+    # played the anchor floats freely: the likelihood is the same wherever
+    # the group sits, and the fit would hand back whatever its start (0)
+    # and the sweeps happened to give. Breadth-first search from the anchor
+    # over the pairs finds everyone reachable; anyone else is an error.
+    neighbours: dict[int, set[int]] = defaultdict(set)
+    for i, j in games:
+        neighbours[i].add(j)
+        neighbours[j].add(i)
+    reached = {anchor}
+    frontier = [anchor]
+    while frontier:
+        node = frontier.pop()
+        for other in neighbours[node] - reached:
+            reached.add(other)
+            frontier.append(other)
+    disconnected = [p for p in players if p not in reached]
+    if disconnected:
+        raise ValueError(
+            f"players {disconnected} are not connected to anchor {anchor} by any "
+            "chain of matches, so their ratings are undetermined"
+        )
 
     # Per player: (opponent, games, own points), virtual draw included.
     schedule: dict[int, list[tuple[int, float]]] = {p: [] for p in players}
