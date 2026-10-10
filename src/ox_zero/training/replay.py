@@ -48,15 +48,14 @@ them into tensors.
 
 from __future__ import annotations
 
-import os
 import re
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
 from ox_zero.engine.encoding import NUM_SYMMETRIES, transform_planes, transform_policy
+from ox_zero.training.atomic import TEMP_SUFFIX, atomic_write, fsync_directory
 from ox_zero.training.selfplay import Examples
 
 # `gen_007.npz`: the generation number is the file name. Three digits is the
@@ -68,7 +67,7 @@ _FILE_PATTERN = re.compile(r"^gen_(\d+)\.npz$")
 # killed mid-save (SIGKILL, power loss) can leave one behind; it is never a
 # valid generation file, so `load` and `save` delete any they find.
 _TEMP_PREFIX = ".gen_"
-_TEMP_SUFFIX = ".tmp"
+_TEMP_SUFFIX = TEMP_SUFFIX
 
 
 def _file_name(generation: int) -> str:
@@ -241,14 +240,15 @@ class ReplayBuffer:
         not re-added (otherwise a later `load` would bring them back). After
         a save the directory holds exactly the buffer.
 
-        Each write is atomic and durable: the data goes to a temporary file
-        in the same directory, is `fsync`ed to the disk, and is then renamed
-        over the final name (a rename within one filesystem is atomic). So a
-        crash never leaves a truncated `gen_NNN.npz` that `load` would trip
-        over, nor (after power loss) a renamed file whose data never reached
-        the disk. Finally the directory itself is `fsync`ed, so the renames
-        and deletions (which are changes to the directory, not to the files)
-        are on disk too. Stale temporary files from a killed save are removed.
+        Each write is atomic and durable (`atomic.atomic_write`): the data
+        goes to a temporary file in the same directory, is `fsync`ed to the
+        disk, and is then renamed over the final name (a rename within one
+        filesystem is atomic). So a crash never leaves a truncated
+        `gen_NNN.npz` that `load` would trip over, nor (after power loss) a
+        renamed file whose data never reached the disk. Finally the
+        directory itself is `fsync`ed once more, after the deletions, so
+        they (changes to the directory, not to the files) are on disk too.
+        Stale temporary files from a killed save are removed.
         """
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=True)
@@ -262,39 +262,19 @@ class ReplayBuffer:
             and self._clean_directory.resolve() == directory.resolve()
         )
         clean = self._clean if same_directory else set()
-        # `mkstemp` creates its file owner-only (0600) for safety, and
-        # `os.replace` keeps that mode. The temporary only exists to make the
-        # write atomic, so give the final file the mode any ordinary file
-        # gets: 0666 minus the process umask (what `np.savez(path)` would
-        # produce).
-        mode = 0o666 & ~_current_umask()
-
         for generation in held:
             if generation in on_disk and generation in clean:
                 continue  # unchanged since its file was written: leave it be
             examples = self._by_generation[generation]
-            fd, temporary = tempfile.mkstemp(
-                dir=directory, prefix=_TEMP_PREFIX, suffix=_TEMP_SUFFIX
+            # Write through the open file object, not a path: given a path
+            # that does not end in `.npz`, `np.savez` silently appends the
+            # suffix. `atomic_write` names its temporary
+            # `.gen_NNN.npz.<random>.tmp`, which `_remove_stale_temporaries`
+            # recognises if a kill leaves one behind.
+            atomic_write(
+                directory / _file_name(generation),
+                lambda file, e=examples: np.savez(file, planes=e.planes, pi=e.pi, z=e.z),
             )
-            try:
-                # Write through the open file object, not the path: given a
-                # path that does not end in `.npz`, `np.savez` silently
-                # appends the suffix, and the rename below would then miss
-                # the file it actually wrote.
-                with os.fdopen(fd, "wb") as handle:
-                    np.savez(handle, planes=examples.planes, pi=examples.pi, z=examples.z)
-                    # Flush Python's buffer to the OS, then force the OS to
-                    # put the bytes on disk *before* the rename. Without the
-                    # fsync a power loss can persist the rename (metadata)
-                    # but not the data, leaving an empty or garbage file
-                    # under the final name.
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                os.chmod(temporary, mode)
-                os.replace(temporary, directory / _file_name(generation))
-            except BaseException:
-                Path(temporary).unlink(missing_ok=True)
-                raise
 
         # Every held generation now matches this directory.
         self._clean = set(held)
@@ -371,49 +351,6 @@ def _generation_files(directory: Path) -> dict[int, Path]:
         if match:
             files[int(match.group(1))] = path
     return files
-
-
-def _current_umask() -> int:
-    """The process umask, read without (if possible) changing it.
-
-    POSIX has no "get umask" call: `os.umask(new)` sets it and returns the
-    old one, so reading means setting and restoring, and for that instant
-    another thread creating a file would see the wrong umask. Linux exposes
-    it read-only in `/proc/self/status` ("Umask: 0022"), so that is tried
-    first; elsewhere (macOS) the set-and-restore is the only way.
-    """
-    try:
-        with open("/proc/self/status", encoding="ascii") as status:
-            for line in status:
-                if line.startswith("Umask:"):
-                    return int(line.split()[1], 8)
-    except (OSError, ValueError, IndexError):
-        pass
-    umask = os.umask(0o022)
-    os.umask(umask)
-    return umask
-
-
-def fsync_directory(directory: Path) -> None:
-    """`fsync` the directory itself, making renames and unlinks in it durable.
-
-    On POSIX a file's name lives in its directory's entries, so after
-    `os.replace` the file's *data* is on disk (it was fsynced) but the new
-    *name* may still only be in the page cache until the directory is
-    fsynced. Opening a directory as a file is POSIX-only (Windows raises),
-    and some filesystems refuse `fsync` on a directory; either way there is
-    nothing better to do, so the error is ignored.
-    """
-    try:
-        fd = os.open(directory, os.O_RDONLY)
-    except OSError:
-        return
-    try:
-        os.fsync(fd)
-    except OSError:
-        pass
-    finally:
-        os.close(fd)
 
 
 def _remove_stale_temporaries(directory: Path) -> None:

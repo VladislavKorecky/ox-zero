@@ -48,7 +48,10 @@ One generator also means one state to save: the checkpoint stores it (with
 torch's CPU RNG state, which only the initial weights draw from), and a
 resumed run continues the *same* random sequence. That is what makes a run
 stopped after generation 2 and resumed bit-for-bit equal to one that ran
-straight through (step 6, test 4).
+straight through (step 6, test 4). Bit-for-bit holds on the same device:
+the device is not part of the run config, so resuming on another backend
+(say a run started on `cpu`, resumed on `mps`) is allowed, but changes the
+numerics from that generation on.
 
 Why resume refuses a changed config
 -----------------------------------
@@ -80,6 +83,7 @@ from ox_zero.engine.network import Network, NetworkConfig
 from ox_zero.engine.network_evaluator import NetworkEvaluator, select_device
 from ox_zero.engine.search import SELF_PLAY, SearchConfig
 from ox_zero.game.rules import Mark
+from ox_zero.training.atomic import atomic_write_text, fsync_directory
 from ox_zero.training.checkpoint import Checkpoint, load_checkpoint, save_checkpoint
 from ox_zero.training.evaluate import (
     EVALUATION,
@@ -89,13 +93,15 @@ from ox_zero.training.evaluate import (
     play_match,
 )
 from ox_zero.training.metrics import METRICS_FILE, MetricsWriter, read_metrics
-from ox_zero.training.replay import ReplayBuffer, fsync_directory
+from ox_zero.training.replay import ReplayBuffer
 from ox_zero.training.selfplay import SelfPlayConfig, self_play
 from ox_zero.training.trainer import Trainer, TrainConfig
 
 MATCHES_FILE = "matches.jsonl"
 RATINGS_FILE = "ratings.json"
 BUFFER_DIR = "buffer"
+# The smallest board a run accepts: the length of a winning line (OXO / XOX).
+MIN_SIZE = 3
 
 
 class ConfigMismatchError(ValueError):
@@ -146,6 +152,35 @@ class RunConfig:
     train: TrainConfig = TrainConfig()
     eval: EvalConfig = EvalConfig()
     tensorboard: bool = True
+
+    def __post_init__(self) -> None:
+        # Reject nonsense at construction, like the sub-configs do, so a bad
+        # flag in scripts/train.py becomes a usage error instead of a run
+        # that fails later (or worse, does something silently pointless).
+        #
+        # Size: the game itself accepts any positive size, but a winning
+        # line is three cells long, so on a board smaller than 3x3 nobody
+        # can ever win. Every game would be a draw, every value target
+        # `z` would be 0, and the run would learn nothing about the game.
+        if self.size < MIN_SIZE:
+            raise ValueError(
+                f"size must be at least {MIN_SIZE} (a winning line is {MIN_SIZE} long), "
+                f"got {self.size}"
+            )
+        # 0 is allowed: it writes only gen_000.pt, the random-network anchor.
+        if self.generations < 0:
+            raise ValueError(f"generations must be at least 0, got {self.generations}")
+        # The name is one directory under `root`. A separator would nest it
+        # (or, with "..", escape `root`); "." would be `root` itself.
+        separators = [sep for sep in (os.sep, os.altsep, "/") if sep]
+        if (
+            not self.name
+            or self.name in (".", "..")
+            or any(sep in self.name for sep in separators)
+        ):
+            raise ValueError(
+                f"name must be a single non-empty directory name, got {self.name!r}"
+            )
 
 
 @dataclass(frozen=True)
@@ -218,6 +253,10 @@ def run(config: RunConfig, root: Path = Path("runs"), device: torch.device | Non
         # latest checkpoint is a leftover of an interrupted generation.
         _truncate_rows(run_dir / METRICS_FILE, latest)
         _truncate_rows(run_dir / MATCHES_FILE, latest)
+        # ratings.json is derived from matches.jsonl, so refit it from the
+        # rows just kept: an interrupted generation may already have written
+        # its own rating, for a generation that (by the rule) never happened.
+        _write_ratings(run_dir)
         if buffer_dir.is_dir():
             # `upto` also deletes buffer files above the checkpoint: the buffer
             # is saved just before the checkpoint, so a crash between the two
@@ -319,19 +358,7 @@ def _generation(
     with matches_path.open("a", encoding="utf-8") as file:
         for row in match_rows:
             file.write(json.dumps(row) + "\n")
-    # Bradley-Terry over *every* match of the run so far, anchored at
-    # generation 0, so earlier generations' ratings are refined too.
-    table = elo_ratings(
-        [
-            (row["generation"], row["opponent"], row["wins"], row["draws"], row["losses"])
-            for row in read_metrics(matches_path)
-        ],
-        anchor=0,
-    )
-    _write_atomically(
-        run_dir / RATINGS_FILE,
-        json.dumps({str(g): table[g] for g in sorted(table)}, indent=1) + "\n",
-    )
+    table = _write_ratings(run_dir)
 
     games = result.games
     lengths = [len(record.moves) for record in games]
@@ -365,6 +392,34 @@ def _generation(
 
     # 6. The commit marker.
     _save(run_dir, generation, network, trainer, config, rng)
+
+
+def _write_ratings(run_dir: Path) -> dict[int, float]:
+    """Refit the Elo table from `matches.jsonl`, write `ratings.json`, return it.
+
+    Bradley-Terry over *every* match of the run so far, anchored at
+    generation 0, so earlier generations' ratings are refined too. With no
+    matches (only `gen_000.pt` committed) there is nothing to fit, and a
+    fresh run has no `ratings.json` at that point either (generation 1
+    writes the first), so any existing one is removed.
+    """
+    matches_path = run_dir / MATCHES_FILE
+    ratings_path = run_dir / RATINGS_FILE
+    rows = read_metrics(matches_path) if matches_path.exists() else []
+    if not rows:
+        if ratings_path.exists():
+            ratings_path.unlink()
+            fsync_directory(run_dir)  # make the deletion durable too
+        return {}
+    table = elo_ratings(
+        [(row["generation"], row["opponent"], row["wins"], row["draws"], row["losses"])
+         for row in rows],
+        anchor=0,
+    )
+    atomic_write_text(
+        ratings_path, json.dumps({str(g): table[g] for g in sorted(table)}, indent=1) + "\n"
+    )
+    return table
 
 
 def checkpoint_name(generation: int) -> str:
@@ -481,24 +536,4 @@ def _truncate_rows(path: Path, latest: int) -> None:
     if not path.exists():
         return
     rows = [row for row in read_metrics(path) if row["generation"] <= latest]
-    _write_atomically(path, "".join(json.dumps(row) + "\n" for row in rows))
-
-
-def _write_atomically(path: Path, text: str) -> None:
-    """Write to a temporary file, then rename over `path`: all or nothing, durably.
-
-    Same pattern as `ReplayBuffer.save`. The rename makes the write atomic
-    (a reader sees the old file or the new one, never half of either). The
-    two fsyncs make it survive a power loss: the file's data is forced to
-    disk *before* the rename (otherwise the rename could persist while the
-    data did not, leaving an empty file under the final name), and the
-    directory is synced *after* it, since the new name lives in the
-    directory's entries.
-    """
-    temporary = path.with_name(f".{path.name}.tmp")
-    with temporary.open("w", encoding="utf-8") as file:
-        file.write(text)
-        file.flush()  # Python's buffer -> the OS
-        os.fsync(file.fileno())  # the OS's page cache -> the disk
-    os.replace(temporary, path)
-    fsync_directory(path.parent)
+    atomic_write_text(path, "".join(json.dumps(row) + "\n" for row in rows))

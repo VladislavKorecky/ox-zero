@@ -380,28 +380,68 @@ def test_checkpoint_name_and_latest_generation(tmp_path):
     assert latest_generation(tmp_path) == 2
 
 
-# 12. Atomic writes are durable ---------------------------------------------------
+# 12. Resume refits ratings.json from the kept matches -----------------------------
 
 
-def test_write_atomically_fsyncs_file_then_directory(tmp_path, monkeypatch):
-    """Like the buffer's save: the data reaches the disk before the rename,
-    and the directory (which holds the new name) is synced after it."""
-    import stat
+def test_resume_drops_an_uncommitted_generations_rating(tmp_path):
+    """A crash after generation 3's ratings write but before `gen_003.pt` leaves
+    a rating for a generation that never happened. Resume truncates
+    matches.jsonl to the latest checkpoint and must refit ratings.json from
+    what is left, so the stale "3" is gone even before generation 3 is redone.
+    Resuming to the generation already reached runs no generation, so what is
+    checked is exactly the cleanup."""
+    config = tiny(generations=2)
+    run_dir = run(config, root=tmp_path, device=CPU)
+    committed = ratings(run_dir)
 
-    events: list[str] = []
-    real_fsync, real_replace = os.fsync, os.replace
+    with (run_dir / "matches.jsonl").open("a") as file:
+        row = {"generation": 3, "opponent": 2, "wins": 2, "draws": 0, "losses": 0, "score": 1.0}
+        file.write(json.dumps(row) + "\n")
+    (run_dir / "ratings.json").write_text(json.dumps({**committed, "3": 123.0}))
 
-    def fsync(fd):
-        events.append("fsync-dir" if stat.S_ISDIR(os.fstat(fd).st_mode) else "fsync-file")
-        real_fsync(fd)
+    run(config, root=tmp_path, device=CPU)
 
-    def replace_(src, dst):
-        events.append("replace")
-        real_replace(src, dst)
+    assert pairings(run_dir) == [(1, 0), (2, 1)]
+    assert ratings(run_dir) == committed
 
-    monkeypatch.setattr(run_module.os, "fsync", fsync)
-    monkeypatch.setattr(run_module.os, "replace", replace_)
-    path = tmp_path / "ratings.json"
-    run_module._write_atomically(path, "{}\n")
-    assert path.read_text() == "{}\n"
-    assert events == ["fsync-file", "replace", "fsync-dir"]
+
+def test_resume_at_generation_zero_removes_stale_ratings(tmp_path):
+    """Only gen_000.pt committed: a fresh run has no ratings.json at that point
+    (generation 1 writes the first), so resume removes a stale one."""
+    config = tiny(generations=0)
+    run_dir = run(config, root=tmp_path, device=CPU)
+    assert not (run_dir / "ratings.json").exists()
+
+    with (run_dir / "matches.jsonl").open("a") as file:
+        row = {"generation": 1, "opponent": 0, "wins": 2, "draws": 0, "losses": 0, "score": 1.0}
+        file.write(json.dumps(row) + "\n")
+    (run_dir / "ratings.json").write_text(json.dumps({"0": 0.0, "1": 50.0}))
+
+    run(config, root=tmp_path, device=CPU)
+
+    assert pairings(run_dir) == []
+    assert not (run_dir / "ratings.json").exists()
+
+
+# 13. RunConfig rejects nonsense ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "changes, message",
+    [
+        ({"size": 2}, "size"),
+        ({"size": 0}, "size"),
+        ({"generations": -1}, "generations"),
+        ({"name": ""}, "name"),
+        ({"name": "a/b"}, "name"),
+        ({"name": ".."}, "name"),
+        ({"name": "."}, "name"),
+    ],
+)
+def test_run_config_rejects_bad_values(changes, message):
+    with pytest.raises(ValueError, match=message):
+        tiny(**changes)
+
+
+def test_run_config_accepts_the_smallest_values():
+    assert tiny(size=3, generations=0).size == 3
