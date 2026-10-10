@@ -225,18 +225,20 @@ class ReplayBuffer:
         has changed since its file was written or read (a second `add` batch
         for it, or a re-play after `drop_above`; see `_clean` in `__init__`).
         An unchanged generation's file is not touched, so a save normally
-        costs one generation's bytes, not the whole buffer's. The files of
-        expired generations (not held, older than the newest held) are
-        deleted. Files above the newest held generation are left alone;
-        resume removes those through `load(..., upto=...)`, and a re-played
-        generation overwrites its stale file because it is dirty.
+        costs one generation's bytes, not the whole buffer's. Every
+        `gen_NNN.npz` of a generation the buffer does not hold is deleted:
+        expired generations, and generations forgotten by `drop_above` and
+        not re-added (otherwise a later `load` would bring them back). After
+        a save the directory holds exactly the buffer.
 
         Each write is atomic and durable: the data goes to a temporary file
         in the same directory, is `fsync`ed to the disk, and is then renamed
         over the final name (a rename within one filesystem is atomic). So a
         crash never leaves a truncated `gen_NNN.npz` that `load` would trip
         over, nor (after power loss) a renamed file whose data never reached
-        the disk. Stale temporary files from a killed save are removed.
+        the disk. Finally the directory itself is `fsync`ed, so the renames
+        and deletions (which are changes to the directory, not to the files)
+        are on disk too. Stale temporary files from a killed save are removed.
         """
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=True)
@@ -250,6 +252,12 @@ class ReplayBuffer:
             and self._clean_directory.resolve() == directory.resolve()
         )
         clean = self._clean if same_directory else set()
+        # `mkstemp` creates its file owner-only (0600) for safety, and
+        # `os.replace` keeps that mode. The temporary only exists to make the
+        # write atomic, so give the final file the mode any ordinary file
+        # gets: 0666 minus the process umask (what `np.savez(path)` would
+        # produce).
+        mode = 0o666 & ~_current_umask()
 
         for generation in held:
             if generation in on_disk and generation in clean:
@@ -272,6 +280,7 @@ class ReplayBuffer:
                     # under the final name.
                     handle.flush()
                     os.fsync(handle.fileno())
+                os.chmod(temporary, mode)
                 os.replace(temporary, directory / _file_name(generation))
             except BaseException:
                 Path(temporary).unlink(missing_ok=True)
@@ -281,11 +290,12 @@ class ReplayBuffer:
         self._clean = set(held)
         self._clean_directory = directory
 
-        if held:
-            newest = held[-1]
-            for generation, path in on_disk.items():
-                if generation not in self._by_generation and generation < newest:
-                    path.unlink()
+        for generation, path in on_disk.items():
+            if generation not in self._by_generation:
+                path.unlink()
+
+        # Make the renames and deletions durable (see the docstring).
+        _fsync_directory(directory)
 
     @classmethod
     def load(
@@ -331,11 +341,10 @@ class ReplayBuffer:
     def drop_above(self, generation: int) -> None:
         """Forget every held generation numbered above `generation`.
 
-        Memory only: the files stay. That is safe because a generation
-        dropped here and later re-added is dirty (see `_clean`), so the next
-        `save` overwrites its stale file; and a dropped generation that is
-        never re-added is either deleted by `save` once a newer one is held,
-        or removed by `load(..., upto=...)` on resume.
+        Memory only: the files stay until the next `save`. That is safe
+        because a generation dropped here and later re-added is dirty (see
+        `_clean`), so `save` overwrites its stale file; and `save` deletes
+        the file of any generation the buffer no longer holds.
         """
         for g in [g for g in self._by_generation if g > generation]:
             del self._by_generation[g]
@@ -352,6 +361,49 @@ def _generation_files(directory: Path) -> dict[int, Path]:
         if match:
             files[int(match.group(1))] = path
     return files
+
+
+def _current_umask() -> int:
+    """The process umask, read without (if possible) changing it.
+
+    POSIX has no "get umask" call: `os.umask(new)` sets it and returns the
+    old one, so reading means setting and restoring, and for that instant
+    another thread creating a file would see the wrong umask. Linux exposes
+    it read-only in `/proc/self/status` ("Umask: 0022"), so that is tried
+    first; elsewhere (macOS) the set-and-restore is the only way.
+    """
+    try:
+        with open("/proc/self/status", encoding="ascii") as status:
+            for line in status:
+                if line.startswith("Umask:"):
+                    return int(line.split()[1], 8)
+    except (OSError, ValueError, IndexError):
+        pass
+    umask = os.umask(0o022)
+    os.umask(umask)
+    return umask
+
+
+def _fsync_directory(directory: Path) -> None:
+    """`fsync` the directory itself, making renames and unlinks in it durable.
+
+    On POSIX a file's name lives in its directory's entries, so after
+    `os.replace` the file's *data* is on disk (it was fsynced) but the new
+    *name* may still only be in the page cache until the directory is
+    fsynced. Opening a directory as a file is POSIX-only (Windows raises),
+    and some filesystems refuse `fsync` on a directory; either way there is
+    nothing better to do, so the error is ignored.
+    """
+    try:
+        fd = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
 
 
 def _remove_stale_temporaries(directory: Path) -> None:

@@ -61,7 +61,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from ox_zero.engine.encoding import NUM_PLANES, encode
+from ox_zero.engine.encoding import NUM_PLANES, encode_batch
 from ox_zero.engine.evaluator import Evaluator
 from ox_zero.engine.search import SearchConfig, SearchTree
 from ox_zero.game.rules import Cell, Mark, State, initial_state, is_terminal
@@ -205,9 +205,10 @@ def game_examples(states: Sequence[State], pis: Sequence[np.ndarray], final: Sta
     if not states:
         return Examples.empty(final.size)
 
-    # encode() gives float32 0/1 planes; uint8 holds them exactly at a quarter
-    # of the memory.
-    planes = np.stack([encode(state) for state in states]).astype(np.uint8)
+    # encode_batch() gives float32 0/1 planes; uint8 holds them exactly at a
+    # quarter of the memory. (It cannot stack zero states, which is why the
+    # empty game returned above.)
+    planes = encode_batch(states).astype(np.uint8)
     pi = np.stack([np.asarray(p, dtype=np.float32) for p in pis])
     if final.winner is None:
         z = np.zeros(len(states), dtype=np.float32)

@@ -8,6 +8,7 @@ and "The checkpoint is the commit marker"; step 5).
 
 import json
 
+import numpy as np
 import pytest
 
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
@@ -165,3 +166,30 @@ def test_write_validates_the_generation_before_writing(tmp_path, tensorboard, ba
     writer.close()
     # Nothing was appended: the file still holds only the good row.
     assert [r["generation"] for r in read_metrics(tmp_path / "metrics.jsonl")] == [1]
+
+
+@pytest.mark.parametrize("tensorboard", [False, True])
+def test_write_accepts_numpy_scalars(tmp_path, tensorboard):
+    # The run loop computes many values with NumPy (np.mean, array indexing),
+    # so they arrive as np.int64 / np.float32 rather than int / float. The
+    # generation check accepts NumPy integers, so the row must serialise too:
+    # `json.dumps` cannot encode NumPy scalars, also inside the nested dict.
+    writer = MetricsWriter(tmp_path, tensorboard=tensorboard)
+    writer.write(
+        {
+            "generation": np.int64(3),
+            "loss_total": np.float32(0.5),
+            "games": np.int32(7),
+            "scores": {2: np.float32(0.75)},
+        }
+    )
+    writer.close()
+
+    (row,) = read_metrics(tmp_path / "metrics.jsonl")
+    assert row == {"generation": 3, "loss_total": 0.5, "games": 7, "scores": {"2": 0.75}}
+    # Plain Python types after the round trip, not floats-for-ints.
+    assert type(row["generation"]) is int
+    assert type(row["games"]) is int
+    if tensorboard:
+        events = _tensorboard_scalars(tmp_path).Scalars("loss_total")
+        assert [(e.step, e.value) for e in events] == [(3, 0.5)]

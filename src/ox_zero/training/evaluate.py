@@ -121,12 +121,27 @@ class MatchResult:
     Attributes:
         wins, draws, losses: Games `a` won, drew, lost.
         openings: The first moves used, one per pair of games.
+        as_x, as_o: `(wins, draws, losses)` for `a` in the games where it
+            played X / O. The totals above are their sums. The split matters
+            because the colours are not equal (4x4 is an O win): a 50% score
+            can be "wins every O game, loses every X game", which says the
+            players are equally strong in a very different way than 50% draws.
     """
 
     wins: int
     draws: int
     losses: int
     openings: tuple[Cell, ...]
+    as_x: tuple[int, int, int]
+    as_o: tuple[int, int, int]
+
+    def __post_init__(self) -> None:
+        totals = tuple(x + o for x, o in zip(self.as_x, self.as_o, strict=True))
+        if totals != (self.wins, self.draws, self.losses):
+            raise ValueError(
+                f"colour split {self.as_x} + {self.as_o} does not sum to "
+                f"(wins, draws, losses) = {(self.wins, self.draws, self.losses)}"
+            )
 
     @property
     def games(self) -> int:
@@ -307,16 +322,27 @@ def play_match(
             game.play_if_ready()
         live = [game for game in live if not game.done]
 
-    wins = draws = losses = 0
+    # Tally per colour of `a`: [wins, draws, losses] for a-as-X and a-as-O.
+    split: dict[Mark, list[int]] = {Mark.X: [0, 0, 0], Mark.O: [0, 0, 0]}
     for game in games:
         winner = game.final.winner
         if winner is None:
-            draws += 1
+            outcome = 1  # draw
         elif winner is game.a_plays:
-            wins += 1
+            outcome = 0  # a won
         else:
-            losses += 1
-    return MatchResult(wins=wins, draws=draws, losses=losses, openings=openings)
+            outcome = 2  # a lost
+        split[game.a_plays][outcome] += 1
+    as_x = (split[Mark.X][0], split[Mark.X][1], split[Mark.X][2])
+    as_o = (split[Mark.O][0], split[Mark.O][1], split[Mark.O][2])
+    return MatchResult(
+        wins=as_x[0] + as_o[0],
+        draws=as_x[1] + as_o[1],
+        losses=as_x[2] + as_o[2],
+        openings=openings,
+        as_x=as_x,
+        as_o=as_o,
+    )
 
 
 def elo_difference(score: float) -> float:
@@ -374,7 +400,8 @@ def elo_ratings(
     with a cap of 10,000 sweeps.
 
     Raises:
-        ValueError: `anchor` is not one of the players.
+        ValueError: `anchor` is not one of the players, or some players are
+            not connected to it through the match graph.
     """
     # Aggregate per unordered pair: games and points for the lower-numbered
     # player. Each pair then gets exactly one virtual draw.
@@ -392,6 +419,31 @@ def elo_ratings(
     players = sorted({p for pair in games for p in pair})
     if anchor not in players:
         raise ValueError(f"anchor {anchor} has played no match; players are {players}")
+
+    # Connectivity: the matches only measure differences along pairs that
+    # played, so a player's rating relative to the anchor exists only if a
+    # chain of matches links them. A group that never (even indirectly)
+    # played the anchor floats freely: the likelihood is the same wherever
+    # the group sits, and the fit would hand back whatever its start (0)
+    # and the sweeps happened to give. Breadth-first search from the anchor
+    # over the pairs finds everyone reachable; anyone else is an error.
+    neighbours: dict[int, set[int]] = defaultdict(set)
+    for i, j in games:
+        neighbours[i].add(j)
+        neighbours[j].add(i)
+    reached = {anchor}
+    frontier = [anchor]
+    while frontier:
+        node = frontier.pop()
+        for other in neighbours[node] - reached:
+            reached.add(other)
+            frontier.append(other)
+    disconnected = [p for p in players if p not in reached]
+    if disconnected:
+        raise ValueError(
+            f"players {disconnected} are not connected to anchor {anchor} by any "
+            "chain of matches, so their ratings are undetermined"
+        )
 
     # Per player: (opponent, games, own points), virtual draw included.
     schedule: dict[int, list[tuple[int, float]]] = {p: [] for p in players}
