@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| Status | Planned (2026-10-11) |
+| Status | Implemented and merged (PR #21, 2026-10-11) |
 | Branches | Plan: `plan/cli-board-size`. Implementation: `feat/cli-board-size` (already created from `main`, empty). |
-| Design references | [docs/cli.md](../cli.md) (the behaviour to keep and the spec rows to change), [cli-integration.md](../design/cli-integration.md#loading-a-model) (a checkpoint for another size is an error), [engineering.md](../design/engineering.md) (why runs live outside `checkpoints/`), [open-questions.md](../design/open-questions.md#results-2026-10-10-the-first-6x6-run) (the 6x6 run this plan makes inspectable) |
-| Depends on | [Plan 03](archive/03-cli-adapter.md) merged (PR #15): `SearchEngine` size guard, `_check_engine_accepts`, `latest_checkpoint`. [Plan 04](archive/04-training-pipeline.md) merged (PR #19): the 6x6 checkpoints under `runs/six-a/`. |
+| Design references | [docs/cli.md](../../cli.md) (the behaviour to keep and the spec rows to change), [cli-integration.md](../../design/cli-integration.md#loading-a-model) (a checkpoint for another size is an error), [engineering.md](../../design/engineering.md) (why runs live outside `checkpoints/`), [open-questions.md](../../design/open-questions.md#results-2026-10-10-the-first-6x6-run) (the 6x6 run this plan makes inspectable) |
+| Depends on | [Plan 03](03-cli-adapter.md) merged (PR #15): `SearchEngine` size guard, `_check_engine_accepts`, `latest_checkpoint`. [Plan 04](04-training-pipeline.md) merged (PR #19): the 6x6 checkpoints under `runs/six-a/`. |
 
 ## Goal
 
