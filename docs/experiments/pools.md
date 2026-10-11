@@ -13,6 +13,8 @@ A pool member `<run>-gen_NNN.pt` is the player `<run>/gen_NNN`. The uniform sear
 
 ## Manifest
 
+**8x8 is the testbed** ([experiment 01](01-testbed-and-noise-floor.md)); its pool is frozen as of 2026-10-12 and defines the scale every experiment is rated on. The 6x6 pool is kept for 6x6 runs.
+
 | Board | File | Origin (run, seed, generation, command) | sha256 | Frozen |
 |---|---|---|---|---|
 | 6x6 | `six-a-gen_005.pt` | `six-a`, seed 0, generation 5, `uv run python scripts/train.py --name six-a --size 6 --generations 20 --seed 0 --device cpu` | `05448fcca04a8a43211ee1d263e20e241a17cc178b4b1d1b46b518c2373de7eb` | 2026-10-11 |

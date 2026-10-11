@@ -7,7 +7,7 @@ Three kinds of document, kept apart: [design](../design/README.md) records decis
 ## Protocol
 
 1. **One hypothesis per experiment.** Arms differ in exactly one thing: a flag of `scripts/train.py` or an upgrade toggle.
-2. **At least two seeds per arm**, three when the first two disagree by more than the noise floor ([experiment 01](01-testbed-and-noise-floor.md)). One seed cannot tell a difference from luck.
+2. **At least two seeds per arm**, three when the first two disagree by more than the noise floor (about 50 Elo on 8x8, [experiment 01](01-testbed-and-noise-floor.md)). One seed cannot tell a difference from luck.
 3. **Run** each arm and seed under its own name (`<arm>-<seed>`); a changed flag is a new run, resume refuses it.
 4. **Rate** every final checkpoint with `scripts/benchmark.py`, and with `--tag` and the search flags when the arm changes the search. The benchmark is the verdict; the in-run curves (`scripts/compare_runs.py`, TensorBoard) are the explanation.
 5. **Tabulate** with `scripts/compare_runs.py runs/<arm>-*`, and paste the table.
@@ -31,7 +31,7 @@ Every recorded rating names the log state it came from (the row count of `runs/b
 Commands template:
 
 ```bash
-uv run python scripts/train.py --name <arm>-s0 --size <S> --generations <N> --seed 0 --device cpu <flag>
+uv run python scripts/train.py --name <arm>-s0 --size <S> --generations <N> --seed 0 --device <cpu on 6x6, mps on 8x8> <flag>
 uv run python scripts/benchmark.py --model runs/<arm>-s0/gen_<N>.pt
 uv run python scripts/compare_runs.py runs/<arm>-s*
 ```
@@ -40,6 +40,6 @@ uv run python scripts/compare_runs.py runs/<arm>-s*
 
 | # | Experiment | Verdict | Date |
 |---|---|---|---|
-| [01](01-testbed-and-noise-floor.md) | Testbed and noise floor | pending (compute not yet run) | 2026-10-11 |
+| [01](01-testbed-and-noise-floor.md) | Testbed and noise floor | 8x8 is the testbed; noise floor about 50 Elo | 2026-10-12 |
 
 The benchmark's reference pools are recorded in [pools.md](pools.md).

@@ -104,7 +104,7 @@ A run's checkpoints store `search`, `selfplay`, `train`, `eval` and `run` in `co
 - float32 only.
 - Every source of randomness is seeded from one run seed and its state is checkpointed, so a resumed run continues rather than restarts. One NumPy generator drives Dirichlet noise, move sampling, replay-buffer sampling, augmentation (the symmetry per example) and the tournament openings; torch is seeded once, for the initial weights. Single-threaded lockstep draws from the shared generator in a fixed order, so one generator is one state to checkpoint.
 - Bit-exact reproducibility across devices is not a goal; reproducibility of a run on one device is. As built (plan 04), resume is bit-for-bit on the same device: a run stopped and resumed gives the same weights and metrics as one run straight through (a test). The device is not part of the run config, so resuming on another backend is allowed, but changes the numerics from then on.
-- `scripts/train.py --device` defaults to `auto` (runtime selection), unlike the CLI's `cpu`: self-play batches are up to `parallel` positions, not 1. On 6x6 `cpu` measured faster anyway (below), so the 6x6 run used `--device cpu`.
+- `scripts/train.py --device` defaults to `auto` (runtime selection), unlike the CLI's `cpu`: self-play batches are up to `parallel` positions, not 1. On 6x6 `cpu` measured faster anyway (below), so the 6x6 run used `--device cpu`; on 8x8 `mps` is twice as fast, so 8x8 runs use `--device mps`.
 
 ## Testing
 
@@ -152,3 +152,18 @@ From the first 6x6 training run ([open-questions.md](open-questions.md#results-2
 
 - **`cpu` is faster for 6x6 self-play even at batches of 64**, by about 1.5×: a batch of 64 positions on a 4×64 network is still too small to pay for the GPU's per-call latency. (The rates are not comparable with the batch-size-1 table above, which measures analysis mode.) `mps` wins only the training phase (batches of 256 with backprop). Over the 20-generation run on `cpu`, self-play stayed between about 6,500 and 9,600 simulations/s.
 - The whole generation is well under the 5-minute concern in the plan: 17 s at generation 1, 59–110 s from generation 8 on, when the tournament reaches four opponents and games are longer.
+
+### Measured (2026-10-11): 8x8
+
+From [experiment 01](../experiments/01-testbed-and-noise-floor.md): generation 1 of the provisional configuration on 8x8 (same constants as 6x6, cutoff 4 moves, `α = 11/64`), one run per device, same laptop.
+
+| Device | Simulations/s | Self-play s | Train s | Eval s | Wall s |
+|---|---|---|---|---|---|
+| cpu | 2,435 | 34.4 | 9.2 | 16.1 | 59.7 |
+| mps | 5,032 | 16.7 | 2.2 | 12.0 | 30.8 |
+
+- **On 8x8 `mps` is twice as fast as `cpu`**, the reverse of 6x6: a batch of 64 positions of 8x8 planes is enough to pay for the GPU's per-call latency. 8x8 runs use `--device mps`.
+- **A 30-generation 8x8 run takes 85 minutes** on `mps` (`eight-a`, the machine to itself): 30 s at generation 1, 180–244 s from generation 15 on as games grow to 30–39 moves. Self-play stayed between 4,600 and 6,100 simulations/s.
+- **The run's own tournament is two thirds of a generation** from generation 8 on (133 s of 202 s; self-play 68 s, training 1 s), so it is the cheapest place to save time: fewer `--eval-opponents` or `--eval-games`.
+- **Three runs in parallel** on the one `mps` device took 116–126 minutes each, about twice the throughput of running them in turn.
+- **An 8x8 benchmark** (5 pairings of 128 games, `cpu`, as the official log requires) takes about 8 minutes alone and 14 while training shares the machine; a 6x6 one about 1.5 minutes.
