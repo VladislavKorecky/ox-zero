@@ -364,6 +364,20 @@ def test_latest_by_size_skips_unreadable_files(tmp_path):
     assert latest_checkpoint(tmp_path) == tmp_path / "b" / "gen_010.pt"
 
 
+def test_latest_by_size_skips_an_unsupported_format(tmp_path):
+    # The right size in a format `load_checkpoint` refuses is as useless as
+    # an unreadable file: picking it would turn the lookup into a load
+    # error even though an older, loadable checkpoint exists.
+    loadable = write(tmp_path / "a" / "gen_001.pt", 6, generation=1)
+    future = write(tmp_path / "b" / "gen_009.pt", 6, generation=9)
+    data = torch.load(future, weights_only=True)
+    data["format_version"] = CHECKPOINT_FORMAT + 1
+    torch.save(data, future)
+    with pytest.raises(ValueError, match="gen_009.pt"):
+        checkpoint_size(future)
+    assert latest_checkpoint(tmp_path, 6) == loadable
+
+
 # --- Helpers -------------------------------------------------------------------
 
 
