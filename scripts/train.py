@@ -30,7 +30,7 @@ from typing import Any
 
 from ox_zero.engine.network import NetworkConfig
 from ox_zero.engine.network_evaluator import select_device
-from ox_zero.engine.search import SELF_PLAY
+from ox_zero.engine.search import SearchConfig
 from ox_zero.training.evaluate import EvalConfig
 from ox_zero.training.metrics import METRICS_FILE, read_metrics
 from ox_zero.training.run import (
@@ -95,7 +95,8 @@ class GenerationPrinter(threading.Thread):
             self.poll()
 
 
-def main() -> None:
+def make_parser() -> argparse.ArgumentParser:
+    """The flag parser (separate from `main` so tests can build a Namespace)."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--name", help="run directory name (default: <size>x<size>-seed<seed>)")
     parser.add_argument("--size", type=int, default=6, help="board size")
@@ -108,6 +109,29 @@ def main() -> None:
     parser.add_argument("--games", type=int, default=128, help="self-play games per generation")
     parser.add_argument("--parallel", type=int, default=64, help="games played in lockstep")
     parser.add_argument("--simulations", type=int, default=100, help="self-play simulations per move")
+    # Self-play search (SearchConfig). Default None = "leave the dataclass
+    # default", so no numeric literal is repeated here and the defaults
+    # cannot drift from SELF_PLAY (which keeps `runs/six-a` resumable).
+    defaults = SearchConfig()
+    parser.add_argument(
+        "--temperature-cutoff", type=int, default=None,
+        help="moves sampled with tau=1 before switching to the most visited "
+        "(default: per board size, see SearchConfig.cutoff)",
+    )
+    parser.add_argument(
+        "--c-init", type=float, default=None, help=f"PUCT c_init (default {defaults.c_init})"
+    )
+    parser.add_argument(
+        "--c-base", type=float, default=None, help=f"PUCT c_base (default {defaults.c_base})"
+    )
+    parser.add_argument(
+        "--dirichlet-alpha", type=float, default=None,
+        help="root-noise concentration (default 11 / size^2)",
+    )
+    parser.add_argument(
+        "--dirichlet-epsilon", type=float, default=None,
+        help=f"root-noise weight (default {defaults.dirichlet_epsilon})",
+    )
     # Training (TrainConfig).
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--steps", type=int, default=50, help="optimiser steps per generation")
@@ -124,6 +148,15 @@ def main() -> None:
         help="nearest previous checkpoints played (at least 1)",
     )
     parser.add_argument("--eval-ladder", type=int, default=8, help="also play g - N; 0 turns it off")
+    parser.add_argument(
+        "--eval-simulations", type=int, default=None,
+        help="tournament simulations per move (default: same as --simulations)",
+    )
+    return parser
+
+
+def main() -> None:
+    parser = make_parser()
     args = parser.parse_args()
     print(f"Parameters: {vars(args)}")
 
@@ -179,13 +212,22 @@ def stop_printer(printer: GenerationPrinter) -> None:
 
 def build_config(args: argparse.Namespace, name: str) -> RunConfig:
     """The `RunConfig` the flags describe. Raises `ValueError` for a bad value."""
+    # Only the search flags that were given: the rest keep their dataclass
+    # defaults, so with no flags this equals SELF_PLAY field for field.
+    given = {
+        field: getattr(args, field)
+        for field in (
+            "temperature_cutoff", "c_init", "c_base", "dirichlet_alpha", "dirichlet_epsilon",
+        )
+        if getattr(args, field) is not None
+    }
     return RunConfig(
         name=name,
         size=args.size,
         seed=args.seed,
         generations=args.generations,
         network=NetworkConfig(blocks=args.blocks, filters=args.filters),
-        search=SELF_PLAY,
+        search=SearchConfig(root_noise=True, **given),
         selfplay=SelfPlayConfig(
             games=args.games, parallel=args.parallel, simulations=args.simulations
         ),
@@ -201,7 +243,9 @@ def build_config(args: argparse.Namespace, name: str) -> RunConfig:
             # The plan's flag convention: 0 means "no ladder opponent".
             ladder=args.eval_ladder if args.eval_ladder > 0 else None,
             games_per_colour=args.eval_games,
-            simulations=args.simulations,
+            simulations=(
+                args.eval_simulations if args.eval_simulations is not None else args.simulations
+            ),
         ),
         tensorboard=not args.no_tensorboard,
     )

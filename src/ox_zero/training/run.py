@@ -100,6 +100,9 @@ from ox_zero.training.trainer import Trainer, TrainConfig
 MATCHES_FILE = "matches.jsonl"
 RATINGS_FILE = "ratings.json"
 BUFFER_DIR = "buffer"
+# `runs/benchmarks/` holds the cross-run reference pools and match logs
+# (training/benchmark.py); a run of that name would collide with it.
+RESERVED_NAME = "benchmarks"
 # The smallest board a run accepts: the length of a winning line (OXO / XOX).
 MIN_SIZE = 3
 
@@ -173,6 +176,11 @@ class RunConfig:
         # The name is one directory under `root`. A separator would nest it
         # (or, with "..", escape `root`); "." would be `root` itself.
         separators = [sep for sep in (os.sep, os.altsep, "/") if sep]
+        if self.name == RESERVED_NAME:
+            raise ValueError(
+                f"name {RESERVED_NAME!r} is reserved for the cross-run benchmark "
+                f"(runs/{RESERVED_NAME}/)"
+            )
         if (
             not self.name
             or self.name in (".", "..")
