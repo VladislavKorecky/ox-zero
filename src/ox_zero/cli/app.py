@@ -89,7 +89,10 @@ SimulationsOpt = Annotated[
 ]
 ModelOpt = Annotated[
     Path | None,
-    typer.Option("--model", help="Checkpoint to load. Defaults to the newest in checkpoints/."),
+    typer.Option(
+        "--model",
+        help="Checkpoint to load. Defaults to the newest in checkpoints/ for the board size.",
+    ),
 ]
 TopOpt = Annotated[int, typer.Option("--top", min=1, help="Number of candidate moves to list.")]
 # `min=3`: the shortest side that can hold a line of three, so a smaller
