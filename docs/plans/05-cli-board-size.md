@@ -51,7 +51,7 @@ Settled on 2026-10-11 with the author. Nothing below is open.
 - Coordinates `(row, col)`, zero-based, row 0 at the top. A 6x6 win-in-one for the tests: X `0,0`, O `0,1`, X wins at `0,2` (`X O X` in row 0), same shape as the 12x12 fixture already in `test_app.py`.
 - Comment thoroughly. The non-obvious bits here are small but worth a sentence each: why the size is parsed before the engine is loaded, why the sandbox checks the size once at launch, why `min=3` (the shortest board that holds a line, and the smallest size where board-string detection cannot collide with a move token).
 - Conventional commits, small and atomic, on `feat/cli-board-size`. Suggested sequence: `docs(cli): specify --size` / `test(cli): pin --size on analyze, best and sandbox` / `test(cli): pin the session size through load and reset` / `feat(cli): add --size` / `docs: drop the "12x12 only" notes`. Both test commits come before the feature commit: the project rule is that no implementation is written before its tests exist, and that includes the `load` fix.
-- **Code review cadence.** This is one logical chunk. Run `/code-review` at medium effort once, after step 3 and before the docs commit and the PR. Fold the findings in; if a round finds nothing design-level, stop.
+- **Code review cadence.** This is one logical chunk, so the review point is after step 3, before the docs commit and the PR. Run `/code-review` at medium effort, fold the findings in, and run it again; stop after the first round that finds nothing design-level.
 - No new dependencies.
 
 ## Interfaces
@@ -62,7 +62,7 @@ SizeOpt = Annotated[
     int,
     typer.Option("--size", min=3, help="Board side length."),   # Typer appends [default: 12]
 ]
-# analyze, best, sandbox each gain `size: SizeOpt = 12`
+# analyze, best, sandbox each gain `size: SizeOpt = BOARD_SIZE`   # the constant, never the literal 12
 def _parse(tokens: Sequence[str], size: int, err: Console) -> State   # passes size to parse_position
 
 # cli/sandbox/session.py
@@ -89,16 +89,16 @@ Spec first, per the project rule. Changes:
 All on the placeholder engine (autouse `fast_engine`) unless marked `real_engine`.
 
 1. **`analyze --size 6` renders a 6x6 board.** `run("analyze", "--size", "6", "2,2", "3,3", "--json")`: exit 0, `board` in the JSON is 36 characters, `moves` has 34 entries, every move is inside `[0, 6)`.
-2. **`best --size 6` finds a 6x6 win in one.** Marked `real_engine`, with the checkpoint root patched to an empty `workdir` so the uniform search runs: `run("best", "--size", "6", "0,0", "0,1", "--simulations", "50")` prints `0,2`. The 12x12 twin of this test exists already. `best --json` carries only `move` and `score` (`report.py`, `best_json`), so this test cannot prove the parse size on its own; it proves the real search works at 6x6, while tests 1, 4 and 7 prove the size. Parametrise it over `best` and `analyze` (the latter asserting `board` is 36 characters via `--json`) so both commands are exercised on the real engine.
+2. **`best --size 6` finds a 6x6 win in one.** Marked `real_engine`, with the checkpoint root patched to an empty `workdir` so the uniform search runs: `run("best", "--size", "6", "0,0", "0,1", "--simulations", "50")` prints `0,2`. The 12x12 twin of this test exists already. `best --json` carries only `move` and `score` (`report.py`, `best_json`), so this test cannot prove the parse size on its own; it proves the real search works at 6x6, while tests 1, 4 and 7 prove the size. A second, separate test (not a parametrisation: the assertions differ) does the same through `analyze --size 6 0,0 0,1 --simulations 50 --json`, asserting `top[0]["move"] == [0, 2]` and `len(board) == 36`, so both commands are exercised on the real engine.
 3. **A 36-character board string parses with `--size 6`.** `run("analyze", "--size", "6", "X" + "_" * 35, "--json")` (one X, so O to move): exit 0, `to_move == "O"`. Without `--size`, the same string exits 2 and stderr contains `144 characters`.
 4. **A move off the small board is a usage error.** `run("analyze", "--size", "6", "7,7")`: exit 2, stderr mentions `off the 6x6 board`, caret under the token (the existing caret tests show how to assert it).
 5. **`--size 2` is rejected by Typer.** Exit 2, nothing on stdout, stderr names the minimum. (And `--size 3` is accepted: `run("analyze", "--size", "3", "--json")` exits 0 with a 9-character `board`.)
-6. **Size mismatch, both directions.** Extend `test_board_size_mismatch_is_a_usage_error` (parametrised over the three commands) with a second case: a 12x12 checkpoint (`write_checkpoint(..., size=12)`) and `--size 4`. Assert the exact substring `checkpoint is for a 12x12 board, position is 4x4`, exit 2, nothing on stdout. Tighten the existing case (4x4 checkpoint, default size) to the exact substring `checkpoint is for a 4x4 board, position is 12x12` too; asserting that both sizes merely appear somewhere cannot tell the two cases apart or catch them being swapped. Keep the parametrisation over all three commands.
+6. **Size mismatch, both directions.** Extend `test_board_size_mismatch_is_a_usage_error` (parametrised over the three commands) with a second case: a 12x12 checkpoint (`write_checkpoint(..., size=12)`) and `--size 4`. The position must fit the small board: pass no position at all (the empty 4x4 board), not the module's `POSITION` (`5,5` is off a 4x4 board and would fail in the parser before the engine is ever loaded, so the test would exit 2 for the wrong reason). Assert the exact substring `checkpoint is for a 12x12 board, position is 4x4`, exit 2, nothing on stdout. Tighten the existing case (4x4 checkpoint, default size) to the exact substring `checkpoint is for a 4x4 board, position is 12x12` too; asserting that both sizes merely appear somewhere cannot tell the two cases apart or catch them being swapped. Keep the parametrisation over all three commands.
 7. **A matching checkpoint works.** Marked `real_engine`: `write_checkpoint(workdir / "six.pt", size=6)`, then `run("analyze", "--size", "6", "--model", str(path), "2,2", "--simulations", "10", "--json")`: exit 0, notice contains `6x6`, `board` is 36 characters. This is the command the whole plan exists for.
 8. **The sandbox launches at the given size.** With the `launched` fixture: `run("sandbox", "--size", "6", "2,2")` → `session.state.size == 6`. And `run("sandbox", "--size", "6")` with no position → an empty 6x6 session.
 9. **`--size` appears in `--help`**, parametrised over `analyze`, `best` and `sandbox`. Cheap, and together with test 6 it is the only test that touches all three commands at once, so it must stay parametrised: tests 1 and 7 cover `analyze`, test 2 covers `best` and `analyze`, test 8 covers `sandbox`.
 
-Run `uv run pytest tests/cli/test_app.py -q`; the new tests must fail (on the feature branch, before step 3) with Typer's "No such option: --size".
+Run `uv run pytest tests/cli/test_app.py -q` on the feature branch before step 3. Every test that passes `--size` fails with Typer's "No such option: --size"; test 9 fails on its assertion. The two halves that do not pass `--size` (the no-flag case of test 3 and the tightened existing case of test 6) already pass, which is expected: they pin behaviour that must not change.
 
 ## Step 2b: the session tests (`tests/cli/sandbox/test_session.py`)
 
@@ -113,7 +113,7 @@ Tests 1, 2 and 4 fail on `main` with `TypeError` (no `size` parameter). Test 3 f
 
 - Add `SizeOpt` next to `TopOpt`. Add `size: SizeOpt = BOARD_SIZE` to the three command signatures; place it right after `position` so `--help` lists it near the input it changes.
 - `_parse(tokens, size, err)` passes `size` through. Update `PositionArg`'s help text: "or a board string (size² characters)".
-- `sandbox` calls `Session.from_tokens(tokens, size)`.
+- `sandbox` calls `Session.from_tokens(tokens, size)`. Extend the comment above `_check_engine_accepts` in `sandbox` ("Every position it reaches (undo included) has the start position's board size") to name `load` explicitly as the one command that could break that invariant, and point at the session test that pins it.
 - `session.py`: thread `size` through `from_tokens` and `_read_position`. **Latent bug, fix here:** the `load` command (`session.py:184`) calls `_read_position(tokens)` with no size, so it parses at 12 regardless of the session. On a 6x6 session, `load 1,1` would silently produce a 12x12 position, which the engine was never checked against (the size check runs once at launch) and would crash the search worker. Pass `self.state.size`. The step 2b tests pin it.
 - Update the module docstring of `app.py` only if it mentions the board size; the spec reference at the top is enough.
 
@@ -144,8 +144,7 @@ Things to look at, and report rather than fix if wrong: the 6x6 board renders wi
 ## Definition of done
 
 - `uv run pytest` is green, including every pre-existing CLI and sandbox test.
-- `uv run ox-zero best --size 6 --model runs/six-a/gen_008.pt 0,0 0,1` prints `0,2` and the loaded-model notice says `6x6`.
-- `uv run ox-zero best --model runs/six-a/gen_008.pt 0,0 0,1` (no `--size`) still fails with the size message, exit 2.
+- Author-only manual checks (the file is gitignored and exists only on the author's machine; test 7 and test 6 are the reproducible equivalents): `uv run ox-zero best --size 6 --model runs/six-a/gen_008.pt 0,0 0,1` prints `0,2` and the loaded-model notice says `6x6`; the same command without `--size` still fails with the size message, exit 2.
 - Every pre-existing command line in `docs/cli.md`'s examples works unchanged.
 - `git diff main -- src/ox_zero/game src/ox_zero/engine src/ox_zero/training` is empty.
 - The `/code-review` run happened and its findings were addressed or explicitly deferred in the PR description.
