@@ -14,6 +14,7 @@ from ox_zero.engine.network import Network, NetworkConfig
 from ox_zero.engine.network_evaluator import NetworkEvaluator, select_device
 from ox_zero.engine.search import analyse
 from ox_zero.game import legal_moves, play
+from ox_zero.game.rules import apply_move, initial_state, is_terminal
 
 TINY = NetworkConfig(blocks=2, filters=8, value_hidden=16)
 CPU = torch.device("cpu")
@@ -116,3 +117,34 @@ def test_analysis_runs_on_a_network(net):
     assert sum(last.visits.values()) == 50 + len(legal_moves(state))
     assert -1.0 <= last.value <= 1.0
     assert last.best in last.visits
+
+
+def test_evaluation_does_not_depend_on_batch_size_or_row_order():
+    # The benchmark logs one measurement per pairing, which presumes a
+    # position's evaluation is a function of the position alone. Float32
+    # kernels are not promised bitwise-equal across batch shapes, so the
+    # promise tested is a tolerance: 1e-5 on policies and values.
+    torch.manual_seed(1)
+    network = Network(6, NetworkConfig(blocks=2, filters=8, value_hidden=16))
+    evaluator = NetworkEvaluator(network, CPU)
+    rng = np.random.default_rng(0)
+    states = []
+    for _ in range(64):
+        # A random playout of random length, stopped early if someone wins.
+        state = initial_state(6)
+        for _ in range(int(rng.integers(0, 12))):
+            if is_terminal(state):
+                break
+            moves = legal_moves(state)
+            state = apply_move(state, moves[int(rng.integers(len(moves)))])
+        states.append(state)
+
+    batch_p, batch_v = evaluator.evaluate(states)
+    single = [evaluator.evaluate([s]) for s in states]
+    np.testing.assert_allclose(batch_p, np.concatenate([p for p, _ in single]), atol=1e-5)
+    np.testing.assert_allclose(batch_v, np.concatenate([v for _, v in single]), atol=1e-5)
+
+    order = rng.permutation(64)
+    shuffled_p, shuffled_v = evaluator.evaluate([states[i] for i in order])
+    np.testing.assert_allclose(shuffled_p, batch_p[order], atol=1e-5)
+    np.testing.assert_allclose(shuffled_v, batch_v[order], atol=1e-5)

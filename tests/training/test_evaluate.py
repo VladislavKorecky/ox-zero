@@ -15,8 +15,9 @@ import pytest
 
 import ox_zero.training.evaluate as evaluate_module
 from ox_zero.engine.evaluator import Evaluator, UniformEvaluator
+from ox_zero.engine.search import SearchConfig, SearchTree
 from ox_zero.game import Solver
-from ox_zero.game.rules import Mark, State, initial_state, legal_moves
+from ox_zero.game.rules import Mark, State, apply_move, initial_state, legal_moves
 from ox_zero.training.evaluate import (
     EVALUATION,
     EvalConfig,
@@ -404,3 +405,139 @@ def test_self_match_uses_two_trees_per_game(recorded_games: list[MatchGame]) -> 
     assert any(
         g.trees[Mark.X] is not None and g.trees[Mark.O] is not None for g in recorded_games
     )
+
+
+# --- 10. Elo fit over any sortable key (plan 06, step 2) ----------------------------
+
+
+def test_elo_ratings_accept_string_players_and_a_string_anchor() -> None:
+    ints = elo_ratings([(1, 0, 30, 0, 10), (2, 1, 30, 0, 10), (2, 0, 35, 0, 5)])
+    names = {0: "uniform@100", 1: "m", 2: "z"}
+    strs = elo_ratings(
+        [(names[a], names[b], w, d, l) for a, b, w, d, l in
+         [(1, 0, 30, 0, 10), (2, 1, 30, 0, 10), (2, 0, 35, 0, 5)]],
+        anchor="uniform@100",
+    )
+    assert strs["uniform@100"] == 0.0
+    for key, name in names.items():
+        assert strs[name] == pytest.approx(ints[key])
+
+
+# --- 11. Per-side budget and search (plan 06, step 2) -------------------------------
+
+
+def three_by_three_game(a_plays: Mark, **kwargs) -> MatchGame:
+    start = apply_move(initial_state(3), (1, 1))
+    return MatchGame(
+        start, UniformEvaluator(), UniformEvaluator(), a_plays, 1, EVALUATION,
+        np.random.default_rng(0), **kwargs,
+    )
+
+
+def test_each_side_searches_with_its_own_budget() -> None:
+    # a (O, moves first after the opening) gets 1 simulation, b gets 4. Read
+    # each mover's tree budget at the instant its move is played:
+    # `SearchTree.simulations` resets on every `play`.
+    game = three_by_three_game(Mark.O, b_simulations=4)
+    budgets: dict[bool, set[int]] = {True: set(), False: set()}
+    while not game.done:
+        mover_is_a = game.state.to_move is game.a_plays
+        tree = game.tree
+        lockstep_step([tree], game.mover)
+        before = game.state
+        spent = tree.simulations
+        game.play_if_ready()
+        if game.state is not before:
+            budgets[mover_is_a].add(spent)
+    assert budgets[True] == {1}
+    assert budgets[False] == {4}
+
+
+def test_each_side_keeps_its_own_search_config() -> None:
+    b_search = SearchConfig(c_init=5.0, root_noise=False, temperature_cutoff=0)
+    game = three_by_three_game(Mark.O, b_search=b_search)
+    while not game.done:
+        lockstep_step([game.tree], game.mover)
+        game.play_if_ready()
+    b_mark = Mark.X  # a plays O
+    assert game.trees[b_mark].config is b_search
+    assert game.trees[Mark.O].config is EVALUATION
+
+
+def test_rebuild_guard_uses_the_owners_config() -> None:
+    b_search = SearchConfig(c_init=5.0, root_noise=False, temperature_cutoff=0)
+    game = three_by_three_game(Mark.O, b_search=b_search)
+    # a (O) moves first. Search until it is ready, then hand b (X) an
+    # unexpanded tree with the wrong config, as if its reply was never visited.
+    while game.trees[Mark.O] is None or game.trees[Mark.O].simulations < 1:
+        lockstep_step([game.tree], game.mover)
+    game.trees[Mark.X] = SearchTree(game.state, EVALUATION, np.random.default_rng(0))
+    game.play_if_ready()
+    assert game.trees[Mark.X].config is b_search
+    assert game.trees[Mark.O].config is EVALUATION
+
+
+@pytest.mark.parametrize("kwargs", [{"b_simulations": 0}, {"simulations": 0}])
+def test_play_match_checks_both_budgets(kwargs) -> None:
+    args = dict(simulations=1, b_simulations=None) | kwargs
+    with pytest.raises(ValueError, match="simulations"):
+        play_match(
+            UniformEvaluator(), UniformEvaluator(), 3, 1,
+            args["simulations"], np.random.default_rng(0), b_simulations=args["b_simulations"],
+        )
+
+
+def test_omitting_the_per_side_arguments_changes_nothing() -> None:
+    def run(**kwargs) -> MatchResult:
+        return play_match(
+            UniformEvaluator(), FirstCellEvaluator(), 4, 3, 8, np.random.default_rng(3), **kwargs
+        )
+
+    assert run() == run(b_simulations=8, b_search=EVALUATION)
+
+
+# --- 12. Per-game results, side swap, opening order (plan 06, step 2) ---------------
+
+
+def keyed(result: MatchResult) -> dict[tuple, int]:
+    """(opening, a's colour) -> result, from a's perspective."""
+    n = len(result.openings)
+    return {
+        (result.openings[i % n], Mark.X if i < n else Mark.O): outcome
+        for i, outcome in enumerate(result.results)
+    }
+
+
+def exhaustive(a: Evaluator, b: Evaluator, seed: int = 0) -> MatchResult:
+    return play_match(a, b, 3, 9, 4, np.random.default_rng(seed))
+
+
+def test_results_agree_with_the_counts() -> None:
+    result = exhaustive(UniformEvaluator(), FirstCellEvaluator())
+    assert len(result.results) == result.games == 18
+    assert result.results.count(1) == result.wins
+    assert result.results.count(0) == result.draws
+    assert result.results.count(-1) == result.losses
+
+
+def test_match_result_rejects_results_that_disagree_with_the_counts() -> None:
+    with pytest.raises(ValueError):
+        MatchResult(
+            wins=1, draws=0, losses=0, openings=((0, 0),),
+            as_x=(1, 0, 0), as_o=(0, 0, 0), results=(-1,),
+        )
+
+
+def test_swapping_the_sides_negates_every_game() -> None:
+    a, b = UniformEvaluator(), FirstCellEvaluator()
+    forward, backward = exhaustive(a, b), exhaustive(b, a)
+    mirror = {Mark.X: Mark.O, Mark.O: Mark.X}
+    f, r = keyed(forward), keyed(backward)
+    assert {(o, mirror[c]): -v for (o, c), v in f.items()} == r
+    assert backward.as_x == forward.as_o[::-1]
+    assert backward.as_o == forward.as_x[::-1]
+
+
+def test_opening_order_does_not_change_the_games() -> None:
+    a, b = UniformEvaluator(), FirstCellEvaluator()
+    assert keyed(exhaustive(a, b, seed=0)) == keyed(exhaustive(a, b, seed=7))

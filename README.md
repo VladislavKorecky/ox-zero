@@ -46,6 +46,7 @@ Training writes one checkpoint per generation, plus metrics and TensorBoard logs
 - [CLI specification](docs/cli.md): commands, flags, input formats, text and JSON output.
 - [Architecture](docs/architecture.md): how the code is organised and the key design decisions.
 - [Engine and training design](docs/design/README.md): the algorithm, the maths, deviations from the AlphaZero paper, and deferred upgrades.
+- [Training experiments](docs/experiments/README.md): the protocol and the log of measured experiments, rated on a shared benchmark scale.
 
 ## Development
 

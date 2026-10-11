@@ -46,6 +46,7 @@ setup and are not counted either.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 
@@ -96,6 +97,33 @@ class SearchConfig:
     temperature_cutoff: int | None = None
     root_noise: bool = False
     expand_root: bool = False
+
+    def __post_init__(self) -> None:
+        # Range checks, so a bad value is refused wherever a config is built
+        # (a script flag, a test, a stored checkpoint) rather than surfacing
+        # as NaN priors or a division by zero deep inside a search.
+        #   ε is a mixing weight, (1 - ε) · prior + ε · noise: it must lie in [0, 1].
+        #   α parametrises a Dirichlet distribution, which needs α > 0.
+        #   The cutoff counts moves, so it cannot be negative.
+        #   c_base divides N(s) in the PUCT constant's logarithm: it must be > 0.
+        #   c_init is added to the PUCT exploration term: finite and non-negative.
+        #   Every float must be finite: NaN passes `<=` comparisons silently.
+        for name in ("c_base", "c_init", "dirichlet_epsilon", "dirichlet_alpha"):
+            value = getattr(self, name)
+            if value is not None and not math.isfinite(value):
+                raise ValueError(f"{name} must be finite, got {value}")
+        if self.c_init < 0.0:
+            raise ValueError(f"c_init must be non-negative, got {self.c_init}")
+        if not 0.0 <= self.dirichlet_epsilon <= 1.0:
+            raise ValueError(f"dirichlet_epsilon must be in [0, 1], got {self.dirichlet_epsilon}")
+        if self.dirichlet_alpha is not None and self.dirichlet_alpha <= 0.0:
+            raise ValueError(f"dirichlet_alpha must be positive, got {self.dirichlet_alpha}")
+        if self.temperature_cutoff is not None and self.temperature_cutoff < 0:
+            raise ValueError(
+                f"temperature_cutoff must be at least 0, got {self.temperature_cutoff}"
+            )
+        if self.c_base <= 0.0:
+            raise ValueError(f"c_base must be positive, got {self.c_base}")
 
     def alpha(self, size: int) -> float:
         """Dirichlet `α` for an `S x S` board: `11 / S²` unless set explicitly.

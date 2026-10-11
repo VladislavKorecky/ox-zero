@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import json
 import numbers
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -54,6 +54,10 @@ if TYPE_CHECKING:
     from torch.utils.tensorboard import SummaryWriter
 
 METRICS_FILE = "metrics.jsonl"
+# The tournament's match log and the ratings derived from it (a run's own;
+# training/benchmark.py has its own log and schema under runs/benchmarks/).
+MATCHES_FILE = "matches.jsonl"
+RATINGS_FILE = "ratings.json"
 TENSORBOARD_DIR = "tensorboard"
 
 
@@ -76,7 +80,7 @@ class MetricsWriter:
         self._directory = Path(directory)
         self._directory.mkdir(parents=True, exist_ok=True)
         self._path = self._directory / METRICS_FILE
-        _repair_partial_last_line(self._path)
+        repair_partial_last_line(self._path)
         self._tensorboard: SummaryWriter | None = None
         if tensorboard:
             # Lazy import: see the module-level note above.
@@ -155,7 +159,7 @@ def _to_python(value: Any) -> Any:
     return value
 
 
-def _repair_partial_last_line(path: Path) -> None:
+def repair_partial_last_line(path: Path) -> None:
     """Make `path` end on a complete line before anything is appended to it.
 
     Every `write` ends its line with `\n`, so a file whose last byte is not
@@ -239,3 +243,43 @@ def read_metrics(path: Path) -> list[dict[str, Any]]:
                 break  # the partial last line of a crashed write
             raise
     return rows
+
+
+def summarise(rows: Sequence[Mapping[str, Any]], at: int | None = None) -> dict[str, Any]:
+    """Reduce a run's metrics rows to one summary at generation `at` (default: the last).
+
+    Keys: `generation`, `elo` (the run's own tournament rating, anchored at its
+    generation 0, so comparable within a run only), the three losses, game
+    length, X win and draw rates, and `wall_seconds_mean5` /
+    `simulations_per_second_mean5`: means over the window of up to five rows
+    ending at `at`. One generation's wall time is noisy (the tournament's size
+    varies); a five-generation mean is what a cost estimate should quote.
+
+    Raises:
+        ValueError: `rows` is empty, or no row has generation `at`.
+    """
+    if not rows:
+        raise ValueError("no metrics rows to summarise")
+    if at is None:
+        index = len(rows) - 1
+    else:
+        matches = [i for i, row in enumerate(rows) if row["generation"] == at]
+        if not matches:
+            raise ValueError(f"no row for generation {at}; the run has {[r['generation'] for r in rows]}")
+        index = matches[0]
+    row = rows[index]
+    window = rows[max(0, index - 4) : index + 1]
+    return {
+        "generation": row["generation"],
+        "elo": row["elo"],
+        "loss_total": row["loss_total"],
+        "loss_policy": row["loss_policy"],
+        "loss_value": row["loss_value"],
+        "mean_game_length": row["mean_game_length"],
+        "x_win_rate": row["x_win_rate"],
+        "draw_rate": row["draw_rate"],
+        "wall_seconds_mean5": float(np.mean([r["wall_seconds"] for r in window])),
+        "simulations_per_second_mean5": float(
+            np.mean([r["simulations_per_second"] for r in window])
+        ),
+    }

@@ -38,6 +38,7 @@ import math
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import TypeVar
 
 import numpy as np
 
@@ -60,6 +61,11 @@ EVALUATION = SearchConfig(root_noise=False, temperature_cutoff=0)
 # p = 1 / (1 + 10^(-d / 400)) has dp/dd = (ln 10 / 400) · p · (1 - p), so the
 # Newton step on the Elo scale carries the factor 400 / ln 10 ≈ 173.7.
 _ELO_PER_NAT = 400 / math.log(10)
+
+# A player's key in the fit: a generation number inside a run (`int`), a
+# player name across runs (`str`, see training/benchmark.py). Anything
+# sortable works, because pairs are keyed by their sorted order.
+K = TypeVar("K", int, str)
 
 
 @dataclass(frozen=True)
@@ -132,6 +138,10 @@ class MatchResult:
             because the colours are not equal (4x4 is an O win): a 50% score
             can be "wins every O game, loses every X game", which says the
             players are equally strong in a very different way than 50% draws.
+        results: One entry per game in play order, +1 / 0 / -1 for a win /
+            draw / loss of `a`. Game `i` starts from `openings[i % len(openings)]`
+            with `a` as X for the first half of the games and O for the second
+            (the order `play_match` plays them). Empty when not recorded.
     """
 
     wins: int
@@ -140,8 +150,18 @@ class MatchResult:
     openings: tuple[Cell, ...]
     as_x: tuple[int, int, int]
     as_o: tuple[int, int, int]
+    results: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
+        if self.results and (
+            len(self.results) != self.wins + self.draws + self.losses
+            or (self.results.count(1), self.results.count(0), self.results.count(-1))
+            != (self.wins, self.draws, self.losses)
+        ):
+            raise ValueError(
+                f"results {self.results} do not match "
+                f"(wins, draws, losses) = {(self.wins, self.draws, self.losses)}"
+            )
         totals = tuple(x + o for x, o in zip(self.as_x, self.as_o, strict=True))
         if totals != (self.wins, self.draws, self.losses):
             raise ValueError(
@@ -196,17 +216,31 @@ class MatchGame:
         simulations: int,
         search: SearchConfig,
         rng: np.random.Generator,
+        *,
+        b_simulations: int | None = None,
+        b_search: SearchConfig | None = None,
     ) -> None:
-        if simulations < 1:
-            # At least one simulation, so the mover's root has a visited child
-            # to choose and the chosen child is expanded (see play_if_ready).
-            raise ValueError(f"simulations must be at least 1, got {simulations}")
+        b_simulations = simulations if b_simulations is None else b_simulations
+        for budget in (simulations, b_simulations):
+            if budget < 1:
+                # At least one simulation, so the mover's root has a visited
+                # child to choose and the chosen child is expanded (see
+                # play_if_ready).
+                raise ValueError(f"simulations must be at least 1, got {budget}")
         self.state = state
         self.a = a
         self.b = b
         self.a_plays = a_plays
-        self.simulations = simulations
-        self.search = search
+        # One (budget, search config) per side, keyed by Mark like the trees:
+        # a benchmark pits a 100-simulation candidate against a 400-simulation
+        # reference, or an upgraded search against the baseline one. Every
+        # place that builds or budgets a tree asks for its *owner's* entry.
+        b_plays = Mark.O if a_plays is Mark.X else Mark.X
+        self.budget: dict[Mark, int] = {a_plays: simulations, b_plays: b_simulations}
+        self.config: dict[Mark, SearchConfig] = {
+            a_plays: search,
+            b_plays: search if b_search is None else b_search,
+        }
         self.rng = rng
         self.trees: dict[Mark, SearchTree | None] = {Mark.X: None, Mark.O: None}
         self.done = is_terminal(state)
@@ -223,7 +257,7 @@ class MatchGame:
         side = self.state.to_move
         tree = self.trees[side]
         if tree is None:
-            tree = SearchTree(self.state, self.search, self.rng)
+            tree = SearchTree(self.state, self.config[side], self.rng)
             self.trees[side] = tree
         return tree
 
@@ -247,7 +281,7 @@ class MatchGame:
             return
         side = self.state.to_move
         tree = self.trees[side]
-        if tree is None or tree.simulations < self.simulations:
+        if tree is None or tree.simulations < self.budget[side]:
             return
 
         move = most_visited(tree.root)
@@ -268,7 +302,7 @@ class MatchGame:
                 # expanded when a move arrives). If it ever does, `play` would
                 # raise; rebuilding from the new position loses only the warm
                 # start, never correctness.
-                self.trees[owner] = SearchTree(self.state, self.search, self.rng)
+                self.trees[owner] = SearchTree(self.state, self.config[owner], self.rng)
 
 
 def _openings(size: int, games_per_colour: int, rng: np.random.Generator) -> tuple[Cell, ...]:
@@ -288,6 +322,9 @@ def play_match(
     simulations: int,
     rng: np.random.Generator,
     search: SearchConfig = EVALUATION,
+    *,
+    b_simulations: int | None = None,
+    b_search: SearchConfig | None = None,
 ) -> MatchResult:
     """Play `2 · games_per_colour` games between `a` and `b`, in lockstep.
 
@@ -308,7 +345,10 @@ def play_match(
     for a_plays in (Mark.X, Mark.O):
         for opening in openings:
             games.append(
-                MatchGame(apply_move(start, opening), a, b, a_plays, simulations, search, rng)
+                MatchGame(
+                    apply_move(start, opening), a, b, a_plays, simulations, search, rng,
+                    b_simulations=b_simulations, b_search=b_search,
+                )
             )
 
     live = [game for game in games if not game.done]
@@ -330,6 +370,7 @@ def play_match(
 
     # Tally per colour of `a`: [wins, draws, losses] for a-as-X and a-as-O.
     split: dict[Mark, list[int]] = {Mark.X: [0, 0, 0], Mark.O: [0, 0, 0]}
+    results: list[int] = []
     for game in games:
         winner = game.final.winner
         if winner is None:
@@ -339,6 +380,7 @@ def play_match(
         else:
             outcome = 2  # a lost
         split[game.a_plays][outcome] += 1
+        results.append(1 - outcome)  # 0 won / 1 drew / 2 lost -> +1 / 0 / -1
     as_x = (split[Mark.X][0], split[Mark.X][1], split[Mark.X][2])
     as_o = (split[Mark.O][0], split[Mark.O][1], split[Mark.O][2])
     return MatchResult(
@@ -348,6 +390,7 @@ def play_match(
         openings=openings,
         as_x=as_x,
         as_o=as_o,
+        results=tuple(results),
     )
 
 
@@ -367,12 +410,13 @@ def elo_difference(score: float) -> float:
 
 
 def elo_ratings(
-    matches: Sequence[tuple[int, int, int, int, int]], anchor: int = 0
-) -> dict[int, float]:
+    matches: Sequence[tuple[K, K, int, int, int]], anchor: K = 0  # type: ignore[assignment]
+) -> dict[K, float]:
     """Bradley-Terry maximum-likelihood Elo ratings over every match given.
 
     Rows are `(player, opponent, wins, draws, losses)` from `player`'s
-    perspective; players are generation numbers.
+    perspective; players are generation numbers (inside a run) or names
+    (across runs); the default anchor 0 suits the former.
 
     The model (Bradley-Terry on the Elo scale): player `i` scores against `j`
     with probability `p_ij = 1 / (1 + 10^((r_j - r_i) / 400))`. The fit finds
@@ -411,12 +455,13 @@ def elo_ratings(
     """
     # Aggregate per unordered pair: games and points for the lower-numbered
     # player. Each pair then gets exactly one virtual draw.
-    games: dict[tuple[int, int], float] = defaultdict(float)
-    points: dict[tuple[int, int], float] = defaultdict(float)  # for pair[0]
+    games: dict[tuple[K, K], float] = defaultdict(float)
+    points: dict[tuple[K, K], float] = defaultdict(float)  # for pair[0]
     for player, opponent, wins, draws, losses in matches:
         if player == opponent:
             raise ValueError(f"player {player} cannot play itself")
-        pair = (min(player, opponent), max(player, opponent))
+        low, high = sorted((player, opponent))
+        pair = (low, high)
         n = wins + draws + losses
         player_points = wins + draws / 2
         games[pair] += n
@@ -433,7 +478,7 @@ def elo_ratings(
     # the group sits, and the fit would hand back whatever its start (0)
     # and the sweeps happened to give. Breadth-first search from the anchor
     # over the pairs finds everyone reachable; anyone else is an error.
-    neighbours: dict[int, set[int]] = defaultdict(set)
+    neighbours: dict[K, set[K]] = defaultdict(set)
     for i, j in games:
         neighbours[i].add(j)
         neighbours[j].add(i)
@@ -452,8 +497,8 @@ def elo_ratings(
         )
 
     # Per player: (opponent, games, own points), virtual draw included.
-    schedule: dict[int, list[tuple[int, float]]] = {p: [] for p in players}
-    actual: dict[int, float] = {p: 0.0 for p in players}
+    schedule: dict[K, list[tuple[K, float]]] = {p: [] for p in players}
+    actual: dict[K, float] = {p: 0.0 for p in players}
     for (i, j), n in games.items():
         n_virtual = n + 1.0
         s_i = points[(i, j)] + 0.5

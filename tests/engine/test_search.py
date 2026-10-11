@@ -72,6 +72,32 @@ def test_explicit_config_values_override():
     assert config.cutoff(12) == 9
 
 
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"dirichlet_epsilon": -0.1},
+        {"dirichlet_epsilon": 1.5},
+        {"dirichlet_alpha": 0.0},
+        {"dirichlet_alpha": -1.0},
+        {"temperature_cutoff": -1},
+        {"c_base": 0.0},
+        {"c_base": -5.0},
+        {"c_base": float("inf")},
+        {"c_init": -1.0},
+        {"dirichlet_alpha": float("nan")},
+    ],
+)
+def test_config_rejects_out_of_range_values(kwargs):
+    # Refused wherever a config is built, not only by a script's flag parser.
+    with pytest.raises(ValueError):
+        SearchConfig(**kwargs)
+
+
+def test_config_accepts_the_range_edges():
+    SearchConfig(dirichlet_epsilon=0.0, temperature_cutoff=0)
+    SearchConfig(dirichlet_epsilon=1.0)
+
+
 def test_mode_presets():
     assert ANALYSIS.expand_root and not ANALYSIS.root_noise
     assert SELF_PLAY.root_noise and not SELF_PLAY.expand_root

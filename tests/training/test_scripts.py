@@ -6,11 +6,17 @@ The scripts run in a subprocess, exactly as a user starts them; every case
 here is rejected before any checkpoint is read or any game is played.
 """
 
+import argparse
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+from ox_zero.engine.search import SELF_PLAY
+from ox_zero.training.evaluate import EvalConfig
+from ox_zero.training.run import RunConfig
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 
@@ -50,6 +56,13 @@ def test_evaluate_rejects_non_positive_counts(tmp_path, flag, value):
         (["--size", "2"], "size"),
         (["--generations", "-1"], "generations"),
         (["--name", "a/b"], "name"),
+        (["--name", "benchmarks"], "benchmarks"),
+        (["--name", "Benchmarks"], "benchmarks"),
+        (["--temperature-cutoff", "-1"], "temperature_cutoff"),
+        (["--dirichlet-epsilon", "1.5"], "dirichlet_epsilon"),
+        (["--dirichlet-alpha", "0"], "dirichlet_alpha"),
+        (["--c-base", "0"], "c_base"),
+        (["--eval-simulations", "0"], "simulations"),
     ],
 )
 def test_train_rejects_bad_run_flags(tmp_path, args, message):
@@ -59,3 +72,276 @@ def test_train_rejects_bad_run_flags(tmp_path, args, message):
     assert "Traceback" not in result.stderr
     assert message in result.stderr
     assert list(tmp_path.iterdir()) == []  # no run directory was created
+
+
+# --- build_config (scripts/train.py loaded in-process) --------------------------
+
+
+def load_script(name: str):
+    """Import `scripts/<name>.py` as a module (scripts are not a package)."""
+    spec = importlib.util.spec_from_file_location(f"script_{name}", SCRIPTS / name)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def train_args(**overrides) -> argparse.Namespace:
+    """The Namespace `train.py`'s parser gives for no flags, with `overrides`."""
+    module = load_script("train.py")
+    parser = module.make_parser()
+    args = parser.parse_args([])
+    for key, value in overrides.items():
+        setattr(args, key, value)
+    return args
+
+
+def test_build_config_defaults_equal_the_plan_04_configuration():
+    # The test that keeps runs/six-a resumable: no new flag may change a field.
+    args = train_args(name="x")
+    config = load_script("train.py").build_config(args, "x")
+    assert config.search == SELF_PLAY
+    assert config.eval == EvalConfig(
+        opponents=args.eval_opponents,
+        ladder=args.eval_ladder,
+        games_per_colour=args.eval_games,
+        simulations=args.simulations,
+    )
+    assert isinstance(config, RunConfig)
+
+
+def test_build_config_each_new_flag_reaches_its_field():
+    module = load_script("train.py")
+    config = module.build_config(
+        train_args(
+            temperature_cutoff=5,
+            c_init=2.0,
+            c_base=100.0,
+            dirichlet_alpha=0.3,
+            dirichlet_epsilon=0.5,
+            eval_simulations=400,
+        ),
+        "x",
+    )
+    assert config.search.temperature_cutoff == 5
+    assert config.search.c_init == 2.0
+    assert config.search.c_base == 100.0
+    assert config.search.dirichlet_alpha == 0.3
+    assert config.search.dirichlet_epsilon == 0.5
+    assert config.search.root_noise
+    assert config.eval.simulations == 400
+    assert config.selfplay.simulations == 100  # untouched
+
+
+def test_build_config_rejects_bad_search_values():
+    module = load_script("train.py")
+    with pytest.raises(ValueError):
+        module.build_config(train_args(temperature_cutoff=-1), "x")
+
+
+# --- scripts/benchmark.py (plan 06, step 3) ---------------------------------------
+
+
+def make_checkpoint(path: Path, seed: int, size: int = 3) -> Path:
+    """A tiny random 3x3 checkpoint; the seed makes distinct bytes."""
+    import torch
+
+    from ox_zero.engine.network import Network, NetworkConfig
+    from ox_zero.training.checkpoint import save_checkpoint
+
+    torch.manual_seed(seed)
+    network = Network(size, NetworkConfig(blocks=1, filters=4, value_hidden=8))
+    save_checkpoint(path, network, generation=1)
+    return path
+
+
+def bench(root: Path, model: Path, *flags: str) -> subprocess.CompletedProcess[str]:
+    return run_script("benchmark.py", "--model", str(model), "--root", str(root), *flags)
+
+
+def log_rows(root: Path, size: int = 3) -> list[dict]:
+    import json
+
+    path = root / f"{size}x{size}" / "matches.jsonl"
+    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def without_date(rows: list[dict]) -> list[dict]:
+    return [{k: v for k, v in row.items() if k != "date"} for row in rows]
+
+
+@pytest.fixture
+def bench_root(tmp_path: Path) -> Path:
+    root = tmp_path / "bench"
+    make_checkpoint(root / "3x3" / "pool" / "p-gen_001.pt", seed=1)
+    return root
+
+
+def test_benchmark_plays_every_reference_once(tmp_path, bench_root):
+    candidate = make_checkpoint(tmp_path / "cand" / "gen_001.pt", seed=2)
+    result = bench(bench_root, candidate)
+    assert result.returncode == 0, result.stderr
+    rows = log_rows(bench_root)
+    assert sorted(r["b"] for r in rows) == ["p/gen_001", "uniform@100", "uniform@400"]
+    assert all(r["a"] == "cand/gen_001" and r["openings"] == 9 for r in rows)
+    assert all(r["wins"] + r["draws"] + r["losses"] == 18 for r in rows)
+    import json
+
+    ratings = json.loads((bench_root / "3x3" / "ratings.json").read_text())
+    assert "cand/gen_001" in ratings["players"]
+    assert "cand/gen_001" in result.stdout
+
+
+def test_benchmark_is_repeatable_across_roots(tmp_path, bench_root):
+    candidate = make_checkpoint(tmp_path / "cand" / "gen_001.pt", seed=2)
+    other = tmp_path / "bench2"
+    make_checkpoint(other / "3x3" / "pool" / "p-gen_001.pt", seed=1)
+    assert bench(bench_root, candidate).returncode == 0
+    assert bench(other, candidate).returncode == 0
+    assert without_date(log_rows(bench_root)) == without_date(log_rows(other))
+
+
+def test_benchmark_rerun_plays_nothing_and_leaves_the_log_alone(tmp_path, bench_root):
+    candidate = make_checkpoint(tmp_path / "cand" / "gen_001.pt", seed=2)
+    assert bench(bench_root, candidate).returncode == 0
+    before = log_rows(bench_root)
+    again = bench(bench_root, candidate)
+    assert again.returncode == 2
+    assert "already" in again.stderr and "Traceback" not in again.stderr
+    assert log_rows(bench_root) == before
+
+
+def test_benchmark_plays_only_a_new_reference(tmp_path, bench_root):
+    candidate = make_checkpoint(tmp_path / "cand" / "gen_001.pt", seed=2)
+    assert bench(bench_root, candidate).returncode == 0
+    make_checkpoint(bench_root / "3x3" / "pool" / "q-gen_002.pt", seed=3)
+    assert bench(bench_root, candidate).returncode == 0
+    assert [r["b"] for r in log_rows(bench_root)][-1] == "q/gen_002"
+    assert len(log_rows(bench_root)) == 4
+
+
+def test_a_pool_member_skips_itself(bench_root):
+    make_checkpoint(bench_root / "3x3" / "pool" / "q-gen_002.pt", seed=3)
+    member = bench_root / "3x3" / "pool" / "p-gen_001.pt"
+    assert bench(bench_root, member).returncode == 0
+    assert sorted(r["b"] for r in log_rows(bench_root)) == ["q/gen_002", "uniform@100", "uniform@400"]
+
+
+def test_a_tagged_candidate_plays_its_untagged_entry(bench_root):
+    make_checkpoint(bench_root / "3x3" / "pool" / "q-gen_002.pt", seed=3)
+    member = bench_root / "3x3" / "pool" / "p-gen_001.pt"
+    result = bench(bench_root, member, "--tag", "t", "--c-init", "3.0")
+    assert result.returncode == 0, result.stderr
+    rows = log_rows(bench_root)
+    assert "p/gen_001" in [r["b"] for r in rows]
+    assert all(r["a"] == "p/gen_001@t" and r["a_search"] == {"c_init": 3.0} for r in rows)
+
+
+def test_the_same_name_with_different_bytes_is_refused(tmp_path, bench_root):
+    candidate = make_checkpoint(tmp_path / "cand" / "gen_001.pt", seed=2)
+    assert bench(bench_root, candidate).returncode == 0
+    make_checkpoint(candidate, seed=9)  # retrained, same name
+    result = bench(bench_root, candidate)
+    assert result.returncode == 2 and "cand/gen_001" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_the_same_bytes_under_a_new_name_is_refused(tmp_path, bench_root):
+    candidate = make_checkpoint(tmp_path / "cand" / "gen_001.pt", seed=2)
+    assert bench(bench_root, candidate).returncode == 0
+    copy = tmp_path / "other" / "gen_001.pt"
+    copy.parent.mkdir()
+    copy.write_bytes(candidate.read_bytes())
+    result = bench(bench_root, copy)
+    assert result.returncode == 2 and "other/gen_001" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "flags, message",
+    [
+        (["--tag", "t"], "--c-init"),
+        (["--c-init", "3.0"], "--tag"),
+        (["--tag", "t", "--c-init", "1.25"], "equal"),
+        (["--tag", "a@b", "--c-init", "3.0"], "--tag"),  # the defaults: a disguised self-match
+    ],
+)
+def test_benchmark_flag_errors(tmp_path, bench_root, flags, message):
+    candidate = make_checkpoint(tmp_path / "cand" / "gen_001.pt", seed=2)
+    result = bench(bench_root, candidate, *flags)
+    assert result.returncode == 2 and message in result.stderr
+    assert log_rows(bench_root) == []
+
+
+def test_benchmark_refuses_a_non_cpu_device_on_the_default_root(tmp_path):
+    candidate = make_checkpoint(tmp_path / "cand" / "gen_001.pt", seed=2)
+    result = run_script("benchmark.py", "--model", str(candidate), "--device", "mps")
+    assert result.returncode == 2 and "cpu" in result.stderr
+
+
+def test_benchmark_without_a_pool_names_the_manifest(tmp_path):
+    candidate = make_checkpoint(tmp_path / "cand" / "gen_001.pt", seed=2)
+    result = bench(tmp_path / "empty", candidate)
+    assert result.returncode == 2 and "docs/experiments/pools.md" in result.stderr
+
+
+# --- scripts/compare_runs.py (plan 06, step 4) --------------------------------------
+
+
+def write_run(root: Path, name: str, rows: list[dict]) -> Path:
+    import json
+
+    directory = root / name
+    directory.mkdir(parents=True)
+    (directory / "metrics.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return directory
+
+
+def metrics_row(generation: int, **overrides) -> dict:
+    row = {
+        "generation": generation, "elo": 10.0 * generation, "loss_total": 3.0,
+        "loss_policy": 2.0, "loss_value": 1.0 / generation, "mean_game_length": 15.0,
+        "x_win_rate": 0.1, "draw_rate": 0.0, "wall_seconds": 10.0,
+        "simulations_per_second": 1000.0,
+    }
+    return row | overrides
+
+
+def test_compare_runs_prints_one_row_per_run(tmp_path):
+    a = write_run(tmp_path, "run-a", [metrics_row(1), metrics_row(2)])
+    b = write_run(tmp_path, "run-b", [metrics_row(1), metrics_row(2), metrics_row(3)])
+    result = run_script("compare_runs.py", str(a), str(b))
+    assert result.returncode == 0, result.stderr
+    lines = [line for line in result.stdout.splitlines() if line.startswith("|")]
+    assert len(lines) == 4  # header, separator, two runs
+    assert "run-a" in lines[2] and "run-b" in lines[3]
+
+
+def test_compare_runs_at_a_generation(tmp_path):
+    a = write_run(tmp_path, "run-a", [metrics_row(1), metrics_row(2)])
+    result = run_script("compare_runs.py", str(a), "--at", "1")
+    assert result.returncode == 0, result.stderr
+    assert "| run-a | 1 |" in result.stdout
+
+
+def test_compare_runs_key_prints_a_column_per_run(tmp_path):
+    a = write_run(tmp_path, "run-a", [metrics_row(1), metrics_row(2)])
+    b = write_run(tmp_path, "run-b", [metrics_row(1)])
+    result = run_script("compare_runs.py", str(a), str(b), "--key", "loss_value")
+    assert result.returncode == 0, result.stderr
+    header = result.stdout.splitlines()[0]
+    assert "run-a" in header and "run-b" in header
+    assert "0.5" in result.stdout  # run-a's generation 2 loss
+
+
+def test_compare_runs_skips_a_directory_without_metrics(tmp_path):
+    a = write_run(tmp_path, "run-a", [metrics_row(1)])
+    (tmp_path / "benchmarks").mkdir()
+    result = run_script("compare_runs.py", str(a), str(tmp_path / "benchmarks"))
+    assert result.returncode == 0
+    assert "benchmarks" in result.stderr and "run-a" in result.stdout
+
+
+def test_compare_runs_with_nothing_to_compare_is_a_usage_error(tmp_path):
+    (tmp_path / "empty").mkdir()
+    result = run_script("compare_runs.py", str(tmp_path / "empty"))
+    assert result.returncode == 2 and "Traceback" not in result.stderr
