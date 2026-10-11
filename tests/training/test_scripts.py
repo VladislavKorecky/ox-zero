@@ -261,7 +261,8 @@ def test_the_same_bytes_under_a_new_name_is_refused(tmp_path, bench_root):
     [
         (["--tag", "t"], "--c-init"),
         (["--c-init", "3.0"], "--tag"),
-        (["--tag", "t", "--c-init", "1.25"], "equal"),  # the defaults: a disguised self-match
+        (["--tag", "t", "--c-init", "1.25"], "equal"),
+        (["--tag", "a@b", "--c-init", "3.0"], "--tag"),  # the defaults: a disguised self-match
     ],
 )
 def test_benchmark_flag_errors(tmp_path, bench_root, flags, message):

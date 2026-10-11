@@ -100,7 +100,9 @@ def candidate_name(path: Path, tag: str | None) -> str:
 
 def base_name(name: str) -> str:
     """The name without its `@tag`: the checkpoint, whatever search plays it."""
-    return name.split("@", 1)[0]
+    # Only an '@' after the last '/' starts a tag: a run name may itself contain one.
+    head, slash, tail = name.rpartition("/")
+    return head + slash + tail.split("@", 1)[0]
 
 
 def benchmark_dir(root: Path, size: int) -> Path:

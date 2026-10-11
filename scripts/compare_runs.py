@@ -68,7 +68,10 @@ def bench_rating(run_dir: Path, generation: int, benchmarks: Path) -> str:
     if matches.is_file():
         rows = read_rows(matches)
         if rows:
-            elo = rating_table(rows).get(name)
+            try:
+                elo = rating_table(rows).get(name)
+            except ValueError:  # e.g. the anchor has no games: the column is optional
+                return ""
             if elo is not None:
                 return f"{elo:+.0f}"  # refit from the log: no interval
     return ""
@@ -93,7 +96,10 @@ def main() -> None:
         if not path.is_file():
             print(f"skipping {directory}: no {METRICS_FILE}", file=sys.stderr)
             continue
-        runs[directory.resolve().name] = (directory, read_metrics(path))
+        name = directory.resolve().name
+        if name in runs:
+            parser.error(f"two run directories are both called {name!r}; rename one")
+        runs[name] = (directory, read_metrics(path))
     if not runs:
         parser.error("none of the given directories has a metrics.jsonl")
 

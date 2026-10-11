@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -80,6 +81,8 @@ def main() -> None:
         for field, value in (("c_init", args.c_init), ("c_base", args.c_base))
         if value is not None
     }
+    if args.tag and not re.fullmatch(r"[A-Za-z0-9_.-]+", args.tag):
+        parser.error("--tag may contain only letters, digits, '_', '.' and '-'")
     if args.tag and not given:
         parser.error("--tag needs --c-init or --c-base (a tag names a non-default search)")
     if given and not args.tag:

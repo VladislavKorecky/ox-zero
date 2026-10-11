@@ -100,6 +100,7 @@ def test_benchmark_dir() -> None:
 def test_base_name() -> None:
     assert base_name("six-a/gen_020@fpu") == "six-a/gen_020"
     assert base_name("six-a/gen_020") == "six-a/gen_020"
+    assert base_name("x@y/gen_001@t") == "x@y/gen_001"
 
 
 # --- 2. list_pool ------------------------------------------------------------------
