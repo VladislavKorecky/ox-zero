@@ -135,7 +135,7 @@ def list_pool(directory: Path) -> list[Reference]:
         Reference(uniform_name(n), None, n, None) for n in UNIFORM_SIMULATIONS
     ]
     pool = Path(directory) / POOL_DIR
-    members = []
+    members: list[Reference] = []
     if pool.is_dir():
         for path in pool.glob("*.pt"):
             members.append(

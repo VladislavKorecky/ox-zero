@@ -43,14 +43,12 @@ from ox_zero.training.benchmark import (
     BenchmarkRow,
     append_rows,
     benchmark_dir,
-    bootstrap_interval,
     candidate_name,
     check_consistency,
     file_sha256,
     list_pool,
     load_pool,
     pairings,
-    rating_table,
     read_rows,
     search_delta,
     write_ratings,
@@ -177,9 +175,11 @@ def main() -> None:
     # --- Rate and report ---
     rows = read_rows(matches_path)
     ratings = write_ratings(directory / RATINGS_FILE, rows)
-    table = rating_table(rows)
-    low, high = bootstrap_interval(rows, name)
-    print(f"\n{name}: {table[name]:+.0f} Elo [{low:+.0f}, {high:+.0f}] (95% bootstrap, anchor {ANCHOR} = 0)")
+    mine = ratings["players"][name]  # already fit and bootstrapped by write_ratings
+    print(
+        f"\n{name}: {mine['elo']:+.0f} Elo [{mine['low']:+.0f}, {mine['high']:+.0f}] "
+        f"(95% bootstrap, anchor {ANCHOR} = 0)"
+    )
     for reference_name, (row, score) in scores.items():
         # A sweep only bounds the true gap, so the score is marked.
         bound = "≥" if score == 1.0 else "≤" if score == 0.0 else " "
