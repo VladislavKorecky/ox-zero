@@ -13,7 +13,7 @@ import pytest
 
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
-from ox_zero.training.metrics import MetricsWriter, read_metrics
+from ox_zero.training.metrics import MetricsWriter, read_metrics, summarise
 
 
 def _row(generation: int, loss: float = 1.0) -> dict:
@@ -193,3 +193,42 @@ def test_write_accepts_numpy_scalars(tmp_path, tensorboard):
     if tensorboard:
         events = _tensorboard_scalars(tmp_path).Scalars("loss_total")
         assert [(e.step, e.value) for e in events] == [(3, 0.5)]
+
+
+# --- summarise (plan 06, step 4) ----------------------------------------------------
+
+
+def _full_row(generation: int, wall: float = 10.0, rate: float = 1000.0) -> dict:
+    return {
+        "generation": generation, "elo": 100.0 * generation,
+        "loss_total": 3.0, "loss_policy": 2.0, "loss_value": 1.0,
+        "mean_game_length": 15.0, "x_win_rate": 0.1, "draw_rate": 0.0,
+        "wall_seconds": wall, "simulations_per_second": rate,
+    }
+
+
+def test_summarise_takes_the_last_row_by_default() -> None:
+    summary = summarise([_full_row(1), _full_row(2), _full_row(3)])
+    assert summary["generation"] == 3
+    assert summary["elo"] == 300.0
+    assert summary["loss_value"] == 1.0
+
+
+def test_summarise_at_a_generation() -> None:
+    assert summarise([_full_row(1), _full_row(2), _full_row(3)], at=2)["elo"] == 200.0
+
+
+def test_summarise_means_over_the_window_of_five() -> None:
+    rows = [_full_row(g, wall=float(g), rate=100.0 * g) for g in range(1, 8)]
+    last = summarise(rows)
+    assert last["wall_seconds_mean5"] == pytest.approx((3 + 4 + 5 + 6 + 7) / 5)
+    assert last["simulations_per_second_mean5"] == pytest.approx(500.0)
+    # Fewer than five rows up to the chosen generation: the mean over those.
+    assert summarise(rows, at=2)["wall_seconds_mean5"] == pytest.approx(1.5)
+
+
+def test_summarise_errors() -> None:
+    with pytest.raises(ValueError):
+        summarise([])
+    with pytest.raises(ValueError, match="9"):
+        summarise([_full_row(1)], at=9)

@@ -281,3 +281,66 @@ def test_benchmark_without_a_pool_names_the_manifest(tmp_path):
     candidate = make_checkpoint(tmp_path / "cand" / "gen_001.pt", seed=2)
     result = bench(tmp_path / "empty", candidate)
     assert result.returncode == 2 and "docs/experiments/pools.md" in result.stderr
+
+
+# --- scripts/compare_runs.py (plan 06, step 4) --------------------------------------
+
+
+def write_run(root: Path, name: str, rows: list[dict]) -> Path:
+    import json
+
+    directory = root / name
+    directory.mkdir(parents=True)
+    (directory / "metrics.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return directory
+
+
+def metrics_row(generation: int, **overrides) -> dict:
+    row = {
+        "generation": generation, "elo": 10.0 * generation, "loss_total": 3.0,
+        "loss_policy": 2.0, "loss_value": 1.0 / generation, "mean_game_length": 15.0,
+        "x_win_rate": 0.1, "draw_rate": 0.0, "wall_seconds": 10.0,
+        "simulations_per_second": 1000.0,
+    }
+    return row | overrides
+
+
+def test_compare_runs_prints_one_row_per_run(tmp_path):
+    a = write_run(tmp_path, "run-a", [metrics_row(1), metrics_row(2)])
+    b = write_run(tmp_path, "run-b", [metrics_row(1), metrics_row(2), metrics_row(3)])
+    result = run_script("compare_runs.py", str(a), str(b))
+    assert result.returncode == 0, result.stderr
+    lines = [line for line in result.stdout.splitlines() if line.startswith("|")]
+    assert len(lines) == 4  # header, separator, two runs
+    assert "run-a" in lines[2] and "run-b" in lines[3]
+
+
+def test_compare_runs_at_a_generation(tmp_path):
+    a = write_run(tmp_path, "run-a", [metrics_row(1), metrics_row(2)])
+    result = run_script("compare_runs.py", str(a), "--at", "1")
+    assert result.returncode == 0, result.stderr
+    assert "| run-a | 1 |" in result.stdout
+
+
+def test_compare_runs_key_prints_a_column_per_run(tmp_path):
+    a = write_run(tmp_path, "run-a", [metrics_row(1), metrics_row(2)])
+    b = write_run(tmp_path, "run-b", [metrics_row(1)])
+    result = run_script("compare_runs.py", str(a), str(b), "--key", "loss_value")
+    assert result.returncode == 0, result.stderr
+    header = result.stdout.splitlines()[0]
+    assert "run-a" in header and "run-b" in header
+    assert "0.5" in result.stdout  # run-a's generation 2 loss
+
+
+def test_compare_runs_skips_a_directory_without_metrics(tmp_path):
+    a = write_run(tmp_path, "run-a", [metrics_row(1)])
+    (tmp_path / "benchmarks").mkdir()
+    result = run_script("compare_runs.py", str(a), str(tmp_path / "benchmarks"))
+    assert result.returncode == 0
+    assert "benchmarks" in result.stderr and "run-a" in result.stdout
+
+
+def test_compare_runs_with_nothing_to_compare_is_a_usage_error(tmp_path):
+    (tmp_path / "empty").mkdir()
+    result = run_script("compare_runs.py", str(tmp_path / "empty"))
+    assert result.returncode == 2 and "Traceback" not in result.stderr
