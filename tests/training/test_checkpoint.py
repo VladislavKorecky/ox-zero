@@ -17,6 +17,7 @@ from ox_zero.engine.network import Network, NetworkConfig
 from ox_zero.engine.search import SearchConfig
 from ox_zero.training.checkpoint import (
     CHECKPOINT_FORMAT,
+    checkpoint_size,
     latest_checkpoint,
     load_checkpoint,
     save_checkpoint,
@@ -295,6 +296,86 @@ def test_latest_ignores_directories_and_dangling_links(tmp_path):
 def test_latest_is_none_for_an_empty_or_missing_root(tmp_path):
     assert latest_checkpoint(tmp_path) is None
     assert latest_checkpoint(tmp_path / "missing") is None
+
+
+# --- latest_checkpoint by board size ---------------------------------------------
+# The CLI asks for "the newest checkpoint of size N" (plan 05), so the files'
+# contents matter here and the tests write real (tiny) checkpoints.
+
+
+def write(path, size, generation=0):
+    """A real checkpoint, unlike the empty files the name-only tests use."""
+    save_checkpoint(path, Network(size, TINY), generation=generation)
+    return path
+
+
+def test_checkpoint_size_reads_the_stored_size(tmp_path):
+    assert checkpoint_size(write(tmp_path / "four.pt", 4)) == 4
+    assert checkpoint_size(write(tmp_path / "six.pt", 6)) == 6
+
+    # Not a checkpoint: the same exception type, with the path, that
+    # `load_checkpoint` raises on that file, so the two never drift apart.
+    junk = tmp_path / "gen_001.pt"
+    junk.write_bytes(b"not a checkpoint")
+    with pytest.raises(ValueError, match="gen_001.pt"):
+        checkpoint_size(junk)
+    with pytest.raises(ValueError, match="gen_001.pt"):
+        load_checkpoint(junk)
+
+
+def test_latest_by_size_skips_newer_files_of_other_sizes(tmp_path):
+    write(tmp_path / "a" / "gen_003.pt", 6, generation=3)
+    write(tmp_path / "b" / "gen_010.pt", 12, generation=10)
+    write(tmp_path / "b" / "gen_002.pt", 6, generation=2)
+    assert latest_checkpoint(tmp_path, 6) == tmp_path / "a" / "gen_003.pt"
+    assert latest_checkpoint(tmp_path, 12) == tmp_path / "b" / "gen_010.pt"
+    assert latest_checkpoint(tmp_path, 4) is None
+    assert latest_checkpoint(tmp_path) == tmp_path / "b" / "gen_010.pt"
+
+
+def test_latest_without_a_size_never_opens_a_file(tmp_path):
+    # Empty files are not readable checkpoints. With no size asked for, only
+    # names count, so they are still returned rather than rejected.
+    for name in ["gen_001.pt", "gen_002.pt"]:
+        (tmp_path / name).touch()
+    assert latest_checkpoint(tmp_path) == tmp_path / "gen_002.pt"
+
+
+def test_latest_by_size_breaks_ties_by_modification_time(tmp_path):
+    older = write(tmp_path / "a" / "gen_005.pt", 6, generation=5)
+    newer = write(tmp_path / "b" / "gen_005.pt", 6, generation=5)
+    os.utime(older, (1_000_000, 1_000_000))
+    os.utime(newer, (2_000_000, 2_000_000))
+    assert latest_checkpoint(tmp_path, 6) == newer
+    os.utime(older, (3_000_000, 3_000_000))
+    assert latest_checkpoint(tmp_path, 6) == older
+
+
+def test_latest_by_size_skips_unreadable_files(tmp_path):
+    # A stale or truncated file must not break the search for a size it
+    # could never have been: it is skipped like a non-matching name.
+    write(tmp_path / "b" / "gen_010.pt", 12, generation=10)
+    junk = tmp_path / "a" / "gen_005.pt"
+    junk.parent.mkdir()
+    junk.write_bytes(b"not a checkpoint")
+    write(tmp_path / "c" / "gen_001.pt", 6, generation=1)
+    assert latest_checkpoint(tmp_path, 6) == tmp_path / "c" / "gen_001.pt"
+    assert latest_checkpoint(tmp_path, 4) is None
+    assert latest_checkpoint(tmp_path) == tmp_path / "b" / "gen_010.pt"
+
+
+def test_latest_by_size_skips_an_unsupported_format(tmp_path):
+    # The right size in a format `load_checkpoint` refuses is as useless as
+    # an unreadable file: picking it would turn the lookup into a load
+    # error even though an older, loadable checkpoint exists.
+    loadable = write(tmp_path / "a" / "gen_001.pt", 6, generation=1)
+    future = write(tmp_path / "b" / "gen_009.pt", 6, generation=9)
+    data = torch.load(future, weights_only=True)
+    data["format_version"] = CHECKPOINT_FORMAT + 1
+    torch.save(data, future)
+    with pytest.raises(ValueError, match="gen_009.pt"):
+        checkpoint_size(future)
+    assert latest_checkpoint(tmp_path, 6) == loadable
 
 
 # --- Helpers -------------------------------------------------------------------

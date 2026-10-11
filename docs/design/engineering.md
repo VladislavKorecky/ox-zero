@@ -82,7 +82,7 @@ runs/<name>/
   tensorboard/     event files, unless turned off
 ```
 
-Why not `checkpoints/`: the CLI auto-loads the newest checkpoint there and is 12x12 only, so a 6x6 run in it would break every `ox-zero analyze` without `--model`. To use a trained model from the CLI, copy or link its checkpoint under `checkpoints/`. A model worth sharing is attached to a GitHub release, not committed.
+Why not `checkpoints/`: a run is a working directory (replay buffer, metrics, every generation), while `checkpoints/` is the library of models the CLI picks from, the newest one per board size. Since [plan 05](../plans/05-cli-board-size.md) the CLI's auto-load filters by `--size`, so a 6x6 model in `checkpoints/` no longer breaks 12x12 commands. To use a trained model from the CLI, copy or link its checkpoint under `checkpoints/`. A model worth sharing is attached to a GitHub release, not committed.
 
 A run's checkpoints store `search`, `selfplay`, `train`, `eval` and `run` in `configs`; `run` is `RunIdentity(name, seed)`. Resuming compares all of them, the board size and the network config with the new run's and refuses any difference (a run is its config; a new config is a new name). The generation target and the TensorBoard switch are exempt. The checkpoint is written last in a generation, so it is the commit marker: on resume, anything logged or buffered above the latest checkpoint is dropped and that generation is re-run.
 

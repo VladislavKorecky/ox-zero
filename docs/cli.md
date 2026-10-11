@@ -11,7 +11,8 @@ The command is `ox-zero`. `analyze` and `best` take a position, print a human-re
 - Cells are written `row,col`, zero-based. Row 0 is the top row, column 0 is the left column. This convention is used everywhere: CLI, code, and tests.
 - A position is given either as a **move list** or as a **board string**. The format is auto-detected.
   - Move list: cells in the order they were played, X first, e.g. `5,5 6,6 5,6`.
-  - Board string: 144 characters, row 0 first, `X`, `O`, or `_` for empty, e.g. `____...X..._` (12 rows × 12 columns).
+  - Board string: *size*² characters (144 for the default 12x12 board), row 0 first, `X`, `O`, or `_` for empty, e.g. `____...X..._` (12 rows × 12 columns).
+- The board size defaults to 12 and is set with `--size`; a move off the board or a board string of the wrong length is an error.
 - The side to move is derived from the mark counts. X always moves first, so equal counts mean X to move and one extra X means O to move. Any other count is rejected as illegal.
 - A board string does not record move order, so a decided board is read as follows: the side that moved last (the side *not* to move) placed the winning mark. The board is rejected as unreachable if no single mark of the last mover lies on every alternating line, because one move must have completed all of them at once.
 
@@ -29,7 +30,8 @@ Flags. Not every flag makes sense for every command; the last three columns say 
 |------|-------------|:---:|:---:|:---:|
 | `--simulations N` | Tree-search playouts per analysis. Strength versus speed. Default 800. With `--live`, an optional cap (no cap by default). | ✓ | ✓ | |
 | `--live` | Keep analysing and stream reports until interrupted. See [Live analysis](#live-analysis). | ✓ | | |
-| `--model PATH` | Checkpoint to load. Defaults to the newest in `checkpoints/`. With no checkpoint available, the search runs with uniform priors and a notice says so. A path that does not exist, a file that is not a readable checkpoint, and a checkpoint for another board size are errors (status 2). | ✓ | ✓ | ✓ |
+| `--size N` | Board side length, at least 3. Default 12. Positions are read at this size, and the default model is the newest checkpoint of this size; an explicit `--model` trained for another size is an error (status 2). | ✓ | ✓ | ✓ |
+| `--model PATH` | Checkpoint to load. Defaults to the newest checkpoint in `checkpoints/` for the board size (`--size`); checkpoints of other sizes are ignored. With no checkpoint available, the search runs with uniform priors and a notice says so. A path that does not exist, a file that is not a readable checkpoint, and a `--model` checkpoint for another board size are errors (status 2). | ✓ | ✓ | ✓ |
 | `--top N` | Number of candidate moves in the top section. Default 3. | ✓ | | ✓ |
 | `--device NAME` | Where the network runs: `cpu` (default), `mps`, `cuda`, or `auto` for the best available. Ignored when no model is loaded. `cpu` is the default because analysis evaluates one position at a time, where a GPU is slower (see [engineering.md](design/engineering.md#measured-2026-09-27)). A device this machine lacks is an error (status 2). | ✓ | ✓ | ✓ |
 | `--seed N` | Fix randomness for reproducible output. The real engine's analysis is deterministic; the seed only affects engines that sample. | ✓ | ✓ | ✓ |
@@ -202,6 +204,8 @@ Commands available inside the sandbox:
 | `quit` | Leave the sandbox. `exit` works too. |
 
 A position loaded as a board string has no move history. It becomes the starting point: `undo` stops there, and the move history lists only the moves played after it.
+
+`load` and `reset` keep the size the sandbox was started with.
 
 Shortcuts, for when typing a command is slower than pressing a key:
 

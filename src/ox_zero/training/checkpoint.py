@@ -33,10 +33,13 @@ from typing import TYPE_CHECKING, Any
 from ox_zero.training.atomic import atomic_write
 
 # torch (and the network, which needs it) is imported inside the functions
-# that use it, not here. `latest_checkpoint` only looks at file names, and the
-# CLI calls it on every run to decide *whether* a network is needed at all;
-# importing torch costs about half a second, which the no-model path should
-# not pay. Under TYPE_CHECKING the names still exist for annotations.
+# that use it, not here: importing it costs about half a second. Without a
+# size, `latest_checkpoint` only looks at file names and never imports it.
+# With a size (what the CLI asks for since plan 05) it has to read each
+# candidate's stored board size, so the CLI pays the import whenever any
+# `gen_*.pt` exists under `checkpoints/`, even when none matches and the run
+# ends in the uniform search. With no checkpoint files at all it still pays
+# nothing. Under TYPE_CHECKING the names still exist for annotations.
 if TYPE_CHECKING:
     import numpy as np
     import torch
@@ -149,20 +152,7 @@ def load_checkpoint(path: Path, device: torch.device | None = None) -> Checkpoin
 
     from ox_zero.engine.network import Network, NetworkConfig
 
-    try:
-        # `weights_only=True`: plain data only, see the module docstring.
-        # `map_location="cpu"`: tensors land on CPU whatever device saved
-        # them; the network is moved afterwards, in one place.
-        data = torch.load(path, weights_only=True, map_location="cpu")
-    except Exception as error:  # corrupt zip, refused pickle, ...
-        raise ValueError(f"{path}: not a readable checkpoint ({error})") from error
-    if not isinstance(data, dict):
-        raise ValueError(f"{path}: not a checkpoint (contains {type(data).__name__})")
-    version = data.get("format_version")
-    if version != CHECKPOINT_FORMAT:
-        raise ValueError(
-            f"{path}: checkpoint format {version} is not supported (expected {CHECKPOINT_FORMAT})"
-        )
+    data = _read(path)
 
     try:
         network = Network(data["size"], NetworkConfig(**data["network_config"]))
@@ -197,13 +187,40 @@ def load_checkpoint(path: Path, device: torch.device | None = None) -> Checkpoin
     return checkpoint
 
 
-def latest_checkpoint(root: Path) -> Path | None:
+def checkpoint_size(path: Path) -> int:
+    """The board size stored in the checkpoint at `path`, without building its network.
+
+    Raises:
+        ValueError: `path` is not a readable checkpoint, the same type (and
+            message shape, path included) `load_checkpoint` raises, so the
+            CLI reports both the same way.
+    """
+    # `mmap=True` memory-maps the file's zip archive instead of reading it
+    # into memory: only the entries actually touched are paged in, so asking
+    # a large checkpoint for one integer does not read every weight tensor.
+    data = _read(path, mmap=True)
+    try:
+        return data["size"]
+    except KeyError as error:
+        raise ValueError(f"{path}: not a readable checkpoint (no {error} key)") from error
+
+
+def latest_checkpoint(root: Path, size: int | None = None) -> Path | None:
     """The newest `gen_N.pt` anywhere under `root`, by generation number.
 
     Ties (two runs at the same generation) go to the most recently modified
     file. Other files are ignored. `None` when nothing matches or `root` does
-    not exist. Only names are read, never file contents: loading every
-    checkpoint to find its generation would cost seconds.
+    not exist.
+
+    `size=None`: only names are read, never file contents (loading every
+    checkpoint to find its generation would cost seconds).
+
+    `size=N`: the newest checkpoint *for an N x N board*. Candidates are
+    tried newest first and each one's stored size is read (`checkpoint_size`)
+    until one matches, which is usually the first file. A file that cannot
+    be read is not a candidate: it is skipped, like a name that does not
+    match. The CLI uses this so `checkpoints/` can hold one library of
+    models per board size.
     """
     if not root.is_dir():
         return None
@@ -219,10 +236,58 @@ def latest_checkpoint(root: Path) -> Path | None:
             except OSError:
                 continue  # deleted between the listing and now (a run pruning old files)
             candidates.append((int(match.group(1)), modified, path))
-    if not candidates:
-        return None
     # Tuples compare element by element: generation first, then mtime.
-    return max(candidates, key=lambda c: (c[0], c[1]))[2]
+    candidates.sort(key=lambda c: (c[0], c[1]), reverse=True)
+    for _, _, path in candidates:
+        if size is None:
+            return path
+        try:
+            if checkpoint_size(path) == size:
+                return path
+        except ValueError:
+            # Skipped, not raised: the size scan opens files older than the
+            # newest, which the name-only lookup never touched, so a stale or
+            # truncated `gen_001.pt` that has sat there harmlessly must not
+            # now turn a lookup into an error. An unreadable file cannot be
+            # "the newest checkpoint of size N" anyway, and passing it with
+            # `--model` still reports it.
+            continue
+    return None
+
+
+def _read(path: Path, mmap: bool = False) -> dict[str, Any]:
+    """`torch.load` a checkpoint's top-level dict, or raise `ValueError` naming `path`.
+
+    Shared by `load_checkpoint` and `checkpoint_size`, so whatever is wrong
+    with the file (corrupt zip, refused pickle, not a dict, a format this
+    code does not know), callers see one exception type with the path in the
+    message. The format check lives here, not only in `load_checkpoint`, so
+    the size scan skips a file in a format the load would refuse. It does not
+    go further: weights that do not fit their stored architecture are only
+    found by building the network, which the scan does not do, so such a
+    file can still be picked and then fail to load (an error, never a wrong
+    model).
+    """
+    import torch
+
+    try:
+        # `weights_only=True`: plain data only, see the module docstring.
+        # It matters here as much as for a full load: `latest_checkpoint`
+        # opens every `gen_*.pt` in a directory the user drops files into,
+        # and none of them may run code on being opened.
+        # `map_location="cpu"`: tensors land on CPU whatever device saved
+        # them; the network is moved afterwards, in one place.
+        data = torch.load(path, weights_only=True, map_location="cpu", mmap=mmap)
+    except Exception as error:  # corrupt zip, refused pickle, ...
+        raise ValueError(f"{path}: not a readable checkpoint ({error})") from error
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: not a checkpoint (contains {type(data).__name__})")
+    version = data.get("format_version")
+    if version != CHECKPOINT_FORMAT:
+        raise ValueError(
+            f"{path}: checkpoint format {version} is not supported (expected {CHECKPOINT_FORMAT})"
+        )
+    return data
 
 
 def _to_cpu(value: Any) -> Any:

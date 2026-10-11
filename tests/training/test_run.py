@@ -140,8 +140,9 @@ def test_end_to_end_writes_the_run_directory(tmp_path):
         assert checkpoint.optimizer_state is not None
         assert checkpoint.rng is not None
 
-    # The plan 03 handshake: what training writes, the CLI reads.
-    engine, notice = load_engine(None, None, root=run_dir)
+    # The plan 03 handshake: what training writes, the CLI reads. The CLI
+    # auto-loads by board size (plan 05), so it asks for the run's size.
+    engine, notice = load_engine(None, None, root=run_dir, size=config.size)
     assert "gen_002.pt" in notice
     state = apply_move(initial_state(4), (1, 1))
     analyses = list(engine.search(state, max_simulations=8))
