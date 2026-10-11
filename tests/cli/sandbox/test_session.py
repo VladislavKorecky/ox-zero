@@ -6,7 +6,7 @@ The commands are specified in docs/cli.md, `sandbox` section.
 import pytest
 
 from ox_zero.cli.sandbox.session import Session
-from ox_zero.game import PositionError, initial_state, play, to_board_string
+from ox_zero.game import Mark, PositionError, initial_state, play, to_board_string
 
 
 def session(*moves: str) -> Session:
@@ -185,6 +185,47 @@ def test_export_shows_the_board_string():
     result = s.execute("export")
     assert result.message == to_board_string(s.state)
     assert not result.error
+
+
+# --- Board size ----------------------------------------------------------------
+# A session keeps the size it started with (docs/cli.md, `sandbox`). The CLI
+# checks the engine against that size once, at launch, so a command that
+# changed it would hand the background search a board it was never checked
+# against.
+
+
+def test_starts_at_the_given_size_with_history():
+    s = Session.from_tokens(["2,2", "3,3"], size=6)
+    assert s.state.size == 6
+    assert s.history == [(2, 2), (3, 3)]
+    s.execute("undo")
+    s.execute("undo")
+    assert s.state == initial_state(6)
+
+
+def test_a_board_string_of_the_given_size_starts_without_history():
+    s = Session.from_tokens(["X" + "_" * 35], size=6)
+    assert s.state.size == 6
+    assert s.state[0, 0] is Mark.X
+    assert s.history == []
+
+
+def test_load_keeps_the_session_size():
+    s = Session.from_tokens([], size=6)
+    assert s.execute("load 1,1 2,2").position_changed
+    assert s.state.size == 6
+    assert s.history == [(1, 1), (2, 2)]
+    # A 12x12 board string does not fit: an error, not a size change.
+    result = s.execute("load " + "_" * 144)
+    assert result.error
+    assert s.state.size == 6
+
+
+def test_reset_keeps_the_session_size():
+    s = Session.from_tokens([], size=6)
+    s.execute("2,2")
+    s.execute("reset")
+    assert s.state == initial_state(6)
 
 
 # --- Other input -------------------------------------------------------------
