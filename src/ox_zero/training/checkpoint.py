@@ -153,11 +153,6 @@ def load_checkpoint(path: Path, device: torch.device | None = None) -> Checkpoin
     from ox_zero.engine.network import Network, NetworkConfig
 
     data = _read(path)
-    version = data.get("format_version")
-    if version != CHECKPOINT_FORMAT:
-        raise ValueError(
-            f"{path}: checkpoint format {version} is not supported (expected {CHECKPOINT_FORMAT})"
-        )
 
     try:
         network = Network(data["size"], NetworkConfig(**data["network_config"]))
@@ -264,8 +259,10 @@ def _read(path: Path, mmap: bool = False) -> dict[str, Any]:
     """`torch.load` a checkpoint's top-level dict, or raise `ValueError` naming `path`.
 
     Shared by `load_checkpoint` and `checkpoint_size`, so whatever is wrong
-    with the file (corrupt zip, refused pickle, not a dict), callers see one
-    exception type with the path in the message.
+    with the file (corrupt zip, refused pickle, not a dict, a format this
+    code does not know), callers see one exception type with the path in the
+    message. The format check lives here, not only in `load_checkpoint`, so
+    the size scan never picks a file that the load would then refuse.
     """
     import torch
 
@@ -281,6 +278,11 @@ def _read(path: Path, mmap: bool = False) -> dict[str, Any]:
         raise ValueError(f"{path}: not a readable checkpoint ({error})") from error
     if not isinstance(data, dict):
         raise ValueError(f"{path}: not a checkpoint (contains {type(data).__name__})")
+    version = data.get("format_version")
+    if version != CHECKPOINT_FORMAT:
+        raise ValueError(
+            f"{path}: checkpoint format {version} is not supported (expected {CHECKPOINT_FORMAT})"
+        )
     return data
 
 
