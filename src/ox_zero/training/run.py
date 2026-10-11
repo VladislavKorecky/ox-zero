@@ -92,13 +92,17 @@ from ox_zero.training.evaluate import (
     opponents_for,
     play_match,
 )
-from ox_zero.training.metrics import METRICS_FILE, MetricsWriter, read_metrics
+from ox_zero.training.metrics import (
+    MATCHES_FILE,
+    METRICS_FILE,
+    RATINGS_FILE,
+    MetricsWriter,
+    read_metrics,
+)
 from ox_zero.training.replay import ReplayBuffer
 from ox_zero.training.selfplay import SelfPlayConfig, self_play
 from ox_zero.training.trainer import Trainer, TrainConfig
 
-MATCHES_FILE = "matches.jsonl"
-RATINGS_FILE = "ratings.json"
 BUFFER_DIR = "buffer"
 # `runs/benchmarks/` holds the cross-run reference pools and match logs
 # (training/benchmark.py); a run of that name would collide with it.

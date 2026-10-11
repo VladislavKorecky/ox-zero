@@ -54,6 +54,10 @@ if TYPE_CHECKING:
     from torch.utils.tensorboard import SummaryWriter
 
 METRICS_FILE = "metrics.jsonl"
+# The tournament's match log and the ratings derived from it (a run's own;
+# training/benchmark.py has its own log and schema under runs/benchmarks/).
+MATCHES_FILE = "matches.jsonl"
+RATINGS_FILE = "ratings.json"
 TENSORBOARD_DIR = "tensorboard"
 
 
@@ -76,7 +80,7 @@ class MetricsWriter:
         self._directory = Path(directory)
         self._directory.mkdir(parents=True, exist_ok=True)
         self._path = self._directory / METRICS_FILE
-        _repair_partial_last_line(self._path)
+        repair_partial_last_line(self._path)
         self._tensorboard: SummaryWriter | None = None
         if tensorboard:
             # Lazy import: see the module-level note above.
@@ -155,7 +159,7 @@ def _to_python(value: Any) -> Any:
     return value
 
 
-def _repair_partial_last_line(path: Path) -> None:
+def repair_partial_last_line(path: Path) -> None:
     """Make `path` end on a complete line before anything is appended to it.
 
     Every `write` ends its line with `\n`, so a file whose last byte is not
