@@ -262,7 +262,11 @@ def _read(path: Path, mmap: bool = False) -> dict[str, Any]:
     with the file (corrupt zip, refused pickle, not a dict, a format this
     code does not know), callers see one exception type with the path in the
     message. The format check lives here, not only in `load_checkpoint`, so
-    the size scan never picks a file that the load would then refuse.
+    the size scan skips a file in a format the load would refuse. It does not
+    go further: weights that do not fit their stored architecture are only
+    found by building the network, which the scan does not do, so such a
+    file can still be picked and then fail to load (an error, never a wrong
+    model).
     """
     import torch
 
