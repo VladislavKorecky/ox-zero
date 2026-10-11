@@ -82,6 +82,9 @@ def test_explicit_config_values_override():
         {"temperature_cutoff": -1},
         {"c_base": 0.0},
         {"c_base": -5.0},
+        {"c_base": float("inf")},
+        {"c_init": -1.0},
+        {"dirichlet_alpha": float("nan")},
     ],
 )
 def test_config_rejects_out_of_range_values(kwargs):

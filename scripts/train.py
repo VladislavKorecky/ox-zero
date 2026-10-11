@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import sys
 import threading
 from pathlib import Path
@@ -30,7 +31,7 @@ from typing import Any
 
 from ox_zero.engine.network import NetworkConfig
 from ox_zero.engine.network_evaluator import select_device
-from ox_zero.engine.search import SearchConfig
+from ox_zero.engine.search import SELF_PLAY, SearchConfig
 from ox_zero.training.evaluate import EvalConfig
 from ox_zero.training.metrics import METRICS_FILE, read_metrics
 from ox_zero.training.run import (
@@ -227,7 +228,7 @@ def build_config(args: argparse.Namespace, name: str) -> RunConfig:
         seed=args.seed,
         generations=args.generations,
         network=NetworkConfig(blocks=args.blocks, filters=args.filters),
-        search=SearchConfig(root_noise=True, **given),
+        search=dataclasses.replace(SELF_PLAY, **given),
         selfplay=SelfPlayConfig(
             games=args.games, parallel=args.parallel, simulations=args.simulations
         ),

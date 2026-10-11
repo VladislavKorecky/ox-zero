@@ -57,6 +57,7 @@ def test_evaluate_rejects_non_positive_counts(tmp_path, flag, value):
         (["--generations", "-1"], "generations"),
         (["--name", "a/b"], "name"),
         (["--name", "benchmarks"], "benchmarks"),
+        (["--name", "Benchmarks"], "benchmarks"),
         (["--temperature-cutoff", "-1"], "temperature_cutoff"),
         (["--dirichlet-epsilon", "1.5"], "dirichlet_epsilon"),
         (["--dirichlet-alpha", "0"], "dirichlet_alpha"),

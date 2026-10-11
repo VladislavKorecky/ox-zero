@@ -46,6 +46,7 @@ setup and are not counted either.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 
@@ -105,6 +106,14 @@ class SearchConfig:
         #   α parametrises a Dirichlet distribution, which needs α > 0.
         #   The cutoff counts moves, so it cannot be negative.
         #   c_base divides N(s) in the PUCT constant's logarithm: it must be > 0.
+        #   c_init is added to the PUCT exploration term: finite and non-negative.
+        #   Every float must be finite: NaN passes `<=` comparisons silently.
+        for name in ("c_base", "c_init", "dirichlet_epsilon", "dirichlet_alpha"):
+            value = getattr(self, name)
+            if value is not None and not math.isfinite(value):
+                raise ValueError(f"{name} must be finite, got {value}")
+        if self.c_init < 0.0:
+            raise ValueError(f"c_init must be non-negative, got {self.c_init}")
         if not 0.0 <= self.dirichlet_epsilon <= 1.0:
             raise ValueError(f"dirichlet_epsilon must be in [0, 1], got {self.dirichlet_epsilon}")
         if self.dirichlet_alpha is not None and self.dirichlet_alpha <= 0.0:

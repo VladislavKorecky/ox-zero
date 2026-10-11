@@ -154,7 +154,8 @@ class MatchResult:
 
     def __post_init__(self) -> None:
         if self.results and (
-            (self.results.count(1), self.results.count(0), self.results.count(-1))
+            len(self.results) != self.wins + self.draws + self.losses
+            or (self.results.count(1), self.results.count(0), self.results.count(-1))
             != (self.wins, self.draws, self.losses)
         ):
             raise ValueError(

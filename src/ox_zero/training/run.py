@@ -180,7 +180,8 @@ class RunConfig:
         # The name is one directory under `root`. A separator would nest it
         # (or, with "..", escape `root`); "." would be `root` itself.
         separators = [sep for sep in (os.sep, os.altsep, "/") if sep]
-        if self.name == RESERVED_NAME:
+        # casefold: macOS filesystems are case-insensitive, so 'Benchmarks' is the same directory.
+        if self.name.casefold() == RESERVED_NAME:
             raise ValueError(
                 f"name {RESERVED_NAME!r} is reserved for the cross-run benchmark "
                 f"(runs/{RESERVED_NAME}/)"
