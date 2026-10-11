@@ -39,4 +39,4 @@ Settled in [plan 03](../plans/archive/03-cli-adapter.md#decisions-made-in-this-p
 - **`--device auto|cpu|mps|cuda`, default `cpu`.** Analysis runs at batch size 1, where `mps` measured 1.7–3× slower than `cpu` ([engineering.md](engineering.md#measured-2026-09-27)). Revisit the default when virtual loss batches the analysis.
 - **`--seed` is documented as having no effect on the real engine:** analysis mode has no noise and no sampling, so it is deterministic.
 
-2026-10-11, [plan 05](../plans/05-cli-board-size.md#decisions-made-in-this-plan): the CLI takes `--size N` (default 12) on every command. Auto-load picks the newest checkpoint *of that size*, skipping other sizes and unreadable files, and falls back to the uniform search when none matches. An explicit `--model` of another size stays an error.
+2026-10-11, [plan 05](../plans/archive/05-cli-board-size.md#decisions-made-in-this-plan): the CLI takes `--size N` (default 12) on every command. Auto-load picks the newest checkpoint *of that size*, skipping other sizes and unreadable files, and falls back to the uniform search when none matches. An explicit `--model` of another size stays an error.
