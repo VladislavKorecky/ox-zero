@@ -17,7 +17,7 @@ from pathlib import Path
 from ox_zero.cli.engine_port import Analysis, Engine
 from ox_zero.engine.evaluator import Evaluator, UniformEvaluator
 from ox_zero.engine.search import ANALYSIS, SearchConfig, Snapshot, analyse
-from ox_zero.game import State
+from ox_zero.game import BOARD_SIZE, State
 
 
 class SearchEngine:
@@ -97,10 +97,16 @@ def _to_analysis(snapshot: Snapshot) -> Analysis:
     )
 
 
-NO_MODEL_NOTICE = (
-    "No trained model found: searching with uniform priors."
-    " Scores reflect search alone, not a learned evaluation."
-)
+def no_model_notice(size: int) -> str:
+    """The notice for the uniform search, naming the board size that had no model.
+
+    A function rather than a constant with a `{size}` placeholder: a call
+    site that forgot to format a constant would print the braces verbatim.
+    """
+    return (
+        f"No trained {size}x{size} model found: searching with uniform priors."
+        " Scores reflect search alone, not a learned evaluation."
+    )
 
 
 def load_engine(
@@ -108,11 +114,16 @@ def load_engine(
     seed: int | None,
     device: str = "cpu",
     root: Path = Path("checkpoints"),
+    size: int = BOARD_SIZE,
 ) -> tuple[Engine, str]:
     """The engine the CLI should use, and a one-line notice saying which.
 
-    - `model` given: load that checkpoint.
-    - Otherwise the newest checkpoint under `root` (by generation).
+    - `model` given: load that checkpoint, whatever its board size. A size
+      other than the position's is not overridden here; it surfaces in
+      `search()` as an error, because the user named the file.
+    - Otherwise the newest checkpoint under `root` (by generation) for a
+      `size` x `size` board. Checkpoints of other sizes are passed over:
+      nothing was named, so choosing among them is selection, not override.
     - Otherwise no model at all: the real search with `UniformEvaluator`,
       i.e. plain PUCT with equal priors and value 0 at every leaf. It still
       finds short tactics, because finished games inside the tree have exact
@@ -134,12 +145,13 @@ def load_engine(
         raise FileNotFoundError(f"model checkpoint not found: {model}")
 
     # Imported here, not at the top: these pull in torch (about half a
-    # second), which the no-model path never needs.
+    # second), which the no-model path only pays when there are checkpoint
+    # files whose sizes must be read (see `latest_checkpoint`).
     from ox_zero.training.checkpoint import latest_checkpoint
 
-    path = model if model is not None else latest_checkpoint(root)
+    path = model if model is not None else latest_checkpoint(root, size)
     if path is None:
-        return SearchEngine(UniformEvaluator(), seed=seed), NO_MODEL_NOTICE
+        return SearchEngine(UniformEvaluator(), seed=seed), no_model_notice(size)
 
     from ox_zero.engine import network_evaluator
     from ox_zero.training.checkpoint import load_checkpoint

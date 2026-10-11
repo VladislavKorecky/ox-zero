@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ox_zero.game import (
+    BOARD_SIZE,
     Cell,
     IllegalMoveError,
     PositionError,
@@ -70,16 +71,18 @@ class Session:
         self.paused = False
 
     @classmethod
-    def from_tokens(cls, tokens: Sequence[str]) -> Session:
+    def from_tokens(cls, tokens: Sequence[str], size: int = BOARD_SIZE) -> Session:
         """Start from command-line tokens (a move list or a board string).
 
         A move list is replayed from the empty board so its moves become undo
         history. A board string has no move order, so it becomes the start.
+        `size` is the board's side length; every later position in the
+        session (`load` and `reset` included) keeps it.
 
         Raises:
             PositionError: The position is invalid.
         """
-        start, moves = _read_position(tokens)
+        start, moves = _read_position(tokens, size)
         return cls(start, moves)
 
     # --- Read-only views ------------------------------------------------------
@@ -180,8 +183,12 @@ class Session:
     def load(self, tokens: Sequence[str]) -> Result:
         if not tokens:
             return _error("usage: load <move list or board string>")
+        # Parsed at the session's own size, never the default: the CLI checks
+        # the engine against the start position's size once, at launch, so a
+        # `load` that changed the size would hand the background search a
+        # board it was never checked against (and crash the worker thread).
         try:
-            start, moves = _read_position(tokens)
+            start, moves = _read_position(tokens, self.state.size)
         except PositionError as error:
             return _error(str(error))
         self._reset_to(start)
@@ -204,14 +211,14 @@ class Session:
         self._moves.append(move)
 
 
-def _read_position(tokens: Sequence[str]) -> tuple[State, list[Cell]]:
+def _read_position(tokens: Sequence[str], size: int) -> tuple[State, list[Cell]]:
     """Split a position into a starting state and the moves played from it.
 
     `parse_position` validates everything (and raises `PositionError`). For a
     move list, the tokens are then re-read as cells so they can be replayed
     as undoable history from the empty board.
     """
-    state = parse_position(tokens)
+    state = parse_position(tokens, size)
     if tokens and "," in tokens[0]:
         return initial_state(state.size), [parse_cell(token) for token in tokens]
     return state, []

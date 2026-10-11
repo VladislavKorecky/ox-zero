@@ -40,6 +40,7 @@ from ox_zero.cli.sandbox.app import run_sandbox
 from ox_zero.cli.sandbox.session import Session
 from ox_zero.cli.engine_port import Analysis, Engine
 from ox_zero.game import (
+    BOARD_SIZE,
     Cell,
     PositionError,
     State,
@@ -72,7 +73,7 @@ app = typer.Typer(
 PositionArg = Annotated[
     list[str] | None,
     typer.Argument(
-        help="Move list (e.g. [bold]5,5 6,6 5,6[/]) or a 144-character board string."
+        help="Move list (e.g. [bold]5,5 6,6 5,6[/]) or a board string (size² characters)."
         " Empty means the empty board.",
         show_default=False,
     ),
@@ -91,6 +92,10 @@ ModelOpt = Annotated[
     typer.Option("--model", help="Checkpoint to load. Defaults to the newest in checkpoints/."),
 ]
 TopOpt = Annotated[int, typer.Option("--top", min=1, help="Number of candidate moves to list.")]
+# `min=3`: the shortest side that can hold a line of three, so a smaller
+# board is one nobody can win on. The default comes from the signature
+# (`BOARD_SIZE`), and Typer prints it in --help, so the text cannot drift.
+SizeOpt = Annotated[int, typer.Option("--size", min=3, help="Board side length.")]
 SeedOpt = Annotated[int | None, typer.Option("--seed", help="Fix randomness for reproducible output.")]
 
 
@@ -121,6 +126,7 @@ JsonOpt = Annotated[bool, typer.Option("--json", help="Machine-readable output i
 @app.command()
 def analyze(
     position: PositionArg = None,
+    size: SizeOpt = BOARD_SIZE,
     simulations: SimulationsOpt = None,
     live: Annotated[
         bool, typer.Option("--live", help="Keep analysing and stream reports until interrupted.")
@@ -134,7 +140,7 @@ def analyze(
     """Evaluate a position and score every legal move."""
     out, err = _consoles()
     tokens = position or []
-    state = _parse(tokens, err)
+    state = _parse(tokens, size, err)
     last_move = _last_move(tokens)
 
     if is_terminal(state):
@@ -145,7 +151,7 @@ def analyze(
             out.print(render.report(state, None, last_move=last_move))
         return
 
-    engine = _load(model, seed, device, err)
+    engine = _load(model, seed, device, state.size, err)
     _check_engine_accepts(engine, state.size, err)
 
     if live:
@@ -172,6 +178,7 @@ def analyze(
 @app.command()
 def best(
     position: PositionArg = None,
+    size: SizeOpt = BOARD_SIZE,
     simulations: SimulationsOpt = None,
     model: ModelOpt = None,
     seed: SeedOpt = None,
@@ -181,7 +188,7 @@ def best(
     """Print only the engine's chosen move."""
     _, err = _consoles()
     tokens = position or []
-    state = _parse(tokens, err)
+    state = _parse(tokens, size, err)
 
     if is_terminal(state):
         # No move exists. Exit 1 so a script like `move=$(ox-zero best ...)`
@@ -192,7 +199,7 @@ def best(
             err.print(render.game_over(state))
         raise typer.Exit(code=1)
 
-    engine = _load(model, seed, device, err)
+    engine = _load(model, seed, device, state.size, err)
     _check_engine_accepts(engine, state.size, err)
     analysis = _search_with_progress(engine, state, simulations or DEFAULT_SIMULATIONS, err)
     if json_output:
@@ -206,6 +213,7 @@ def best(
 @app.command()
 def sandbox(
     position: PositionArg = None,
+    size: SizeOpt = BOARD_SIZE,
     model: ModelOpt = None,
     top: TopOpt = 3,
     seed: SeedOpt = None,
@@ -215,13 +223,16 @@ def sandbox(
     _, err = _consoles()
     tokens = position or []
     try:
-        session = Session.from_tokens(tokens)
+        session = Session.from_tokens(tokens, size)
     except PositionError as error:
         _fail(err, str(error), tokens, error.token_index)
-    engine = _load(model, seed, device, err)
+    engine = _load(model, seed, device, session.state.size, err)
     # The sandbox searches in a worker thread, where an error would tear down
     # the screen. Every position it reaches (undo included) has the start
     # position's board size, so checking that size here covers the session.
+    # `load` is the one command that could break that, by parsing a new
+    # position; it parses at the session's size (tests/cli/sandbox/
+    # test_session.py, test_load_keeps_the_session_size).
     _check_engine_accepts(engine, session.state.size, err)
     run_sandbox(session, engine, top)
 
@@ -240,10 +251,15 @@ def _consoles() -> tuple[Console, Console]:
     return Console(highlight=False), Console(stderr=True, highlight=False)
 
 
-def _parse(tokens: Sequence[str], err: Console) -> State:
-    """Parse the position, or print a caret-style error and exit with status 2."""
+def _parse(tokens: Sequence[str], size: int, err: Console) -> State:
+    """Parse the position on a `size` x `size` board, or print a caret-style error and exit 2.
+
+    Parsing happens before the engine is loaded: a bad position should be
+    reported at once, not after torch has been imported, and the sandbox
+    needs the position before anything else.
+    """
     try:
-        return parse_position(tokens)
+        return parse_position(tokens, size)
     except PositionError as error:
         _fail(err, str(error), tokens, error.token_index)
 
@@ -259,10 +275,18 @@ def _last_move(tokens: Sequence[str]) -> Cell | None:
     return None
 
 
-def _load(model: Path | None, seed: int | None, device: Device, err: Console) -> Engine:
-    """Load the engine and print its notice (which model, or none), dimmed, on stderr."""
+def _load(
+    model: Path | None, seed: int | None, device: Device, size: int, err: Console
+) -> Engine:
+    """Load the engine and print its notice (which model, or none), dimmed, on stderr.
+
+    `size` picks the default checkpoint (the newest of that board size).
+    Callers pass the *parsed* position's size, not the `--size` flag: the
+    flag has done its job in the parse, and reading it twice would be a
+    second source of truth for a future call site to get out of step with.
+    """
     try:
-        engine, notice = load_engine(model, seed, device.value)
+        engine, notice = load_engine(model, seed, device.value, size=size)
     except (FileNotFoundError, ValueError) as error:
         # A missing file, an unreadable checkpoint, or a device the weights
         # cannot be moved to (absent, or out of memory); the message says which.
