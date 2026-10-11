@@ -31,10 +31,12 @@ The search is a generator. In analysis mode each iteration runs one simulation (
 
 ## Loading a model
 
-`--model PATH` or the newest checkpoint in `checkpoints/` (recursively, by generation), per the spec. The checkpoint carries its configs, so the adapter rebuilds the network from the file alone and selects the device at runtime. A checkpoint trained on a different board size than the position being analysed is an error.
+`--model PATH` or the newest checkpoint of the requested board size in `checkpoints/` (recursively, by generation), per the spec. The checkpoint carries its configs, so the adapter rebuilds the network from the file alone and selects the device at runtime. An explicit `--model` trained on a different board size than the position being analysed is an error.
 
 Settled in [plan 03](../plans/archive/03-cli-adapter.md#decisions-made-in-this-plan) on 2026-10-09, with three changes to `docs/cli.md`:
 
 - **No model: uniform-priors search, not the placeholder.** With no checkpoint the CLI runs the real search with `UniformEvaluator` and a notice says so. It finds short tactics with no training at all. `PlaceholderEngine` is test tooling only.
 - **`--device auto|cpu|mps|cuda`, default `cpu`.** Analysis runs at batch size 1, where `mps` measured 1.7–3× slower than `cpu` ([engineering.md](engineering.md#measured-2026-09-27)). Revisit the default when virtual loss batches the analysis.
 - **`--seed` is documented as having no effect on the real engine:** analysis mode has no noise and no sampling, so it is deterministic.
+
+2026-10-11, [plan 05](../plans/05-cli-board-size.md#decisions-made-in-this-plan): the CLI takes `--size N` (default 12) on every command. Auto-load picks the newest checkpoint *of that size*, skipping other sizes and unreadable files, and falls back to the uniform search when none matches. An explicit `--model` of another size stays an error.

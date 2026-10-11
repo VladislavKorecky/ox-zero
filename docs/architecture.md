@@ -84,7 +84,7 @@ Only the `gui` (roadmap step 5), and it is not designed yet either (see below).
 
 The engine and the training pipeline are built to the design in [docs/design](design/README.md): search, network and the evaluator seam ([search.md](design/search.md), [network.md](design/network.md)), the training loop ([training.md](design/training.md)), and their place in the code ([engineering.md](design/engineering.md)). Improvements deferred from version 1 are in [upgrades.md](design/upgrades.md), and constants that wait on experiments, with the first 6x6 run's numbers, in [open-questions.md](design/open-questions.md).
 
-The engine is connected to the CLI ([plan 03](plans/archive/03-cli-adapter.md), [cli-integration.md](design/cli-integration.md)): `Analysis` carries the engine's chosen move, and the placeholder is test tooling only. Training runs live in `runs/<name>/`, not `checkpoints/`: the CLI auto-loads the newest checkpoint under `checkpoints/` and is 12x12 only, so a trained model reaches it by being copied or linked there, or passed with `--model`.
+The engine is connected to the CLI ([plan 03](plans/archive/03-cli-adapter.md), [cli-integration.md](design/cli-integration.md)): `Analysis` carries the engine's chosen move, and the placeholder is test tooling only. Training runs live in `runs/<name>/`, not `checkpoints/`: the CLI auto-loads the newest checkpoint of the requested size (`--size`, default 12) under `checkpoints/`, so a trained model of any size reaches it by being copied or linked there, or passed with `--model`.
 
 ## Deliberately undecided
 
