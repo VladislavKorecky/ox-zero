@@ -74,6 +74,8 @@ Deviations from the plan's sequence, to fit the night: `six-a`'s generations 21â
 | cpu | 2,435 | 34.4 | 9.2 | 16.1 | 59.7 |
 | mps | 5,032 | 16.7 | 2.2 | 12.0 | 30.8 |
 
+The `mps` probe and `eight-a` (both seed 0 on `mps`) produced bit-identical generation-1 weights, while the `cpu` probe differed (max weight difference 0.50): `mps` training looks deterministic per device, so far checked for one generation only.
+
 **Per run.**
 
 | Run | Device | Generations | Wall time | Mean s/gen from gen 8 | Slowest gen | Phases from gen 8 (self-play / train / tournament s) |
