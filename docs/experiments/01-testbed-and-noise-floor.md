@@ -40,7 +40,7 @@ The testbed is the board that passes all three, with 8x8 preferred:
 
 ## Commands
 
-As run, in this order (2026-10-11, the author's 8 GB Apple Silicon laptop, 4 performance + 4 efficiency cores):
+As run (2026-10-11; steps 1 and 2 overlapped the start of step 3, see below; the author's 8 GB Apple Silicon laptop, 4 performance + 4 efficiency cores):
 
 ```bash
 # 1. 6x6 pool: copy six-a generations 5, 10, 15 to runs/benchmarks/6x6/pool/six-a-gen_NNN.pt, then
@@ -117,7 +117,7 @@ Per-reference scores of the measured `six-a` generations (score, then the candid
 | `six-a/gen_030` | 0.833 (22–4–10, 36–0–0) | 0.819 (23–0–13, 36–0–0) | 0.736 (17–0–19, 36–0–0) | 0.597 (10–0–26, 33–0–3) | 0.639 (12–0–24, 34–0–2) |
 | `six-a/gen_040` | 0.722 (16–0–20, 36–0–0) | 0.778 (20–0–16, 36–0–0) | 0.778 (20–0–16, 36–0–0) | 0.778 (21–0–15, 35–0–1) | 0.806 (22–0–14, 36–0–0) |
 
-`six-a` kept learning past generation 20 (+156 → +282), but **near-strength 6x6 pairings carry almost no information**. In a colour-paired match the O games mostly cancel (each side wins as O), so only the games X wins move the score off 0.5; between networks within 60 Elo of each other X won 16 of 216 games (7%), about 5 per 72-game pairing. The 0.500 of `gen_020` against `gen_015` is not itself the problem (the two rate +156 and +155, so 0.500 is the right answer); the problem is that it rests on 9 X wins. Larger gaps do show (`gen_040` against `gen_015`: 0.806, 22 X wins), so 6x6 can rank networks 80+ Elo apart, not finer. This is criterion (c).
+`six-a` kept learning past generation 20 (+156 → +282), but **near-strength 6x6 pairings carry almost no information**. In a colour-paired match the O games mostly cancel (each side wins as O), so only the games X wins move the score off 0.5; between networks within 60 Elo of each other X won 16 of 216 games (7%), about 5 per 72-game pairing; within 150 Elo, 16% of network-against-network games and 17% against the uniform players. The 0.500 of `gen_020` against `gen_015` is not itself the problem (the two rate +156 and +155, so 0.500 is the right answer); the problem is that it rests on 6 X wins. Larger gaps do show (`gen_040` against `gen_015`: 0.806, 22 X wins), so 6x6 can rank networks 80+ Elo apart, not finer. This is criterion (c).
 
 ### 8x8
 
@@ -155,12 +155,19 @@ Per-reference scores of every non-pool candidate (score, then the candidate's W�
 
 Observations:
 
-- **Every seed learned, and kept learning.** Generation 15 → 30: `eight-b` +49 → +360, `eight-c` +63 → +334, `eight-d` +92 → +308. The reference run `eight-a` (+25 → +331) lands inside the seeds' range, so no lineage bias shows at this resolution.
+- **Every seed learned, and kept learning.** Generation 15 → 30: `eight-b` +49 → +360, `eight-c` +63 → +334, `eight-d` +92 → +308. The reference run `eight-a` (+25 → +331) lands inside the seeds' range at generation 30 but 24 Elo below it at generation 15, so the evidence on lineage bias is mixed at this resolution.
 - **Seed spread (the noise floor): 52 Elo** at generation 30 (+308 to +360) and 43 Elo at generation 15 (+49 to +92), the range of three seeds. A range of three is itself a rough estimate; read "about 50 Elo".
 - **The bootstrap intervals are wider than the seed spread**: about 85–90 Elo wide (±44) at generation 30, against a 52 Elo range. Plan 06 lists this as a point to report rather than act on, because the remedy would change the pool. What it means: with five references and 128 games per pairing, game-sampling noise is about as large as the seed-to-seed difference it is supposed to resolve, so the measured spread is mostly benchmark noise and the true seed component may be smaller. A difference between two arms is believable only beyond both, roughly 50–90 Elo; finer resolution needs more references near the candidates' strength (a pool extension, see the next point) or more seeds per arm. **Decision for Vláďa**; the pool is unchanged.
 - **The pool is thin at the top.** The references are −204, −123, 0, +71 and +168; every final candidate is 140–192 Elo above the strongest, scores 0.74–0.84 against it and 0.89–0.98 against `gen_005` and `gen_010`, which therefore add little information. Later experiments, whose candidates will be stronger still, will push this further. The rules allow extending a pool (never replacing it): a later `eight-a` generation that no criterion rates (`gen_025`) would be the natural candidate. Not done here, because it is a choice about the scale.
 - **The scale is not quite transitive.** `eight-c/gen_015` beats `uniform@100` 0.852 but only breaks even with `eight-a/gen_010` (0.492), which rates −123; `eight-a/gen_015` beats `gen_005` and `gen_010` 0.93 and 0.90 but loses to both uniform players. Early networks and the uniform search are good at different things, and one number per player averages over that. Another reason the near-strength references matter most.
-- **More measurable than 6x6, by degree.** O also wins most near-equal 8x8 games, but less overwhelmingly: in the six pairings within 60 Elo (all `gen_015` candidates against the uniform players) X won 170 of 768 games (22%, from 14% to 36% per pairing), against 7% on 6x6. With 128 games per pairing that is about 28 informative games per pairing against about 5 on 6x6. There are no near-strength pairings for the generation-30 candidates (the pool is thin at the top, above), so this rests on the halfway generations.
+- **More measurable than 6x6, by degree.** O also wins most near-equal 8x8 games, but less overwhelmingly. Compared like for like, pairings within 150 Elo by final rating (X's share of all games):
+
+  | Pairings within 150 Elo | 6x6 | 8x8 |
+  |---|---|---|
+  | network against network | 16% (117 of 720, 10 pairings) | 37% (328 of 896, 7 pairings) |
+  | network against uniform search | 17% (36 of 216, 3 pairings) | 26% (338 of 1,280, 10 pairings) |
+
+  With 128 games per pairing against 72, an 8x8 pairing carries about two to four times as many informative games. Within 60 Elo the only 8x8 pairings are the six `gen_015` candidates against the uniform players inside that window (X 22%, 170 of 768); there are none for the generation-30 candidates (the pool is thin at the top, above). The 6x6 network pairings are all within one lineage (`six-a` against its ancestors), the 8x8 ones mostly across lineages, which may account for part of the gap.
 - **Early 8x8 networks are weaker than the uniform search.** Generations 5 and 10 rate −204 and −123, and the run's own Elo at generation 10 (+435 over its random generation 0) says nothing about strength against a non-network player. 8x8 needs about 15 generations to reach the uniform search's level.
 
 ### compare_runs.py
@@ -200,9 +207,9 @@ Applied to the measured seeds `eight-b`, `eight-c`, `eight-d` (8x8) and to `six-
 |---|---|---|
 | (a) Headroom: final − halfway > seed spread (52) | **Pass**: +311, +271, +216 | Not assessed: no measured seeds (8x8 passed (b)). For context only, `six-a`'s own gain is +126 (generation 20 → 40) |
 | (b) Cadence: one baseline run ≤ about 90 min | **Pass**: `eight-a` 84.7 min on `mps`, slowest generation 244 s | Pass: `six-a` 51 min for 40 generations on `cpu` |
-| (c) Measurability: near-strength scores not pinned at 0.5 | **Pass, by degree**: X wins 22% of near-strength games (170 of 768), about 28 informative games per pairing | **Fail**: X wins 7% of near-strength games (16 of 216), about 5 per pairing; resolution only for gaps of 80+ Elo |
+| (c) Measurability: near-strength scores not pinned at 0.5 (both colours win games) | **Pass**: X wins 26–37% of games within 150 Elo | **Marginal**: both colours do win, so it passes as worded, but X wins only 16–17% within 150 Elo and 7% within 60 (about 5 informative games per pairing) |
 
-**Verdict: 8x8 is the testbed.** It passes all three criteria; 6x6 fails measurability, because between networks of similar strength the second player wins nearly every game, so a paired-colour score rests on a handful of X wins.
+**Verdict: 8x8 is the testbed.** It passes all three criteria, and the rule prefers 8x8 when it does. The verdict does not depend on 6x6's (c), which passes only as worded: between networks of similar strength the second player wins nearly every 6x6 game, so a paired-colour score rests on a handful of X wins.
 
 **Noise floor: about 50 Elo** between seeds of the same configuration at generation 30 (52 measured, range of three), with 95% bootstrap intervals of about ±44 Elo per rating, so game sampling alone puts about ±62 on the difference of two single ratings. The two noise sources are the same size, and three seeds cannot separate them. Working rule until an experiment measures better: two seeds of one arm more than about 60 Elo apart get a third (protocol rule 2); an arm difference (of seed means) under about 60 Elo is not resolvable on this pool with three seeds per arm, and anything above about 90 Elo is.
 

@@ -7,7 +7,7 @@ Three kinds of document, kept apart: [design](../design/README.md) records decis
 ## Protocol
 
 1. **One hypothesis per experiment.** Arms differ in exactly one thing: a flag of `scripts/train.py` or an upgrade toggle.
-2. **At least two seeds per arm**, three when the first two disagree by more than the noise floor (on 8x8: under 50 Elo is noise, 50–90 a grey zone that takes the third seed, [experiment 01](01-testbed-and-noise-floor.md#verdict)). One seed cannot tell a difference from luck.
+2. **At least two seeds per arm**, three when the first two disagree by more than about 60 Elo on 8x8 (the noise floor of [experiment 01](01-testbed-and-noise-floor.md#verdict): seeds spread about 50 Elo, and game sampling alone puts about ±62 on the difference of two ratings). One seed cannot tell a difference from luck. An arm difference under about 60 Elo is not resolvable with three seeds per arm on the current pool.
 3. **Run** each arm and seed under its own name (`<arm>-<seed>`); a changed flag is a new run, resume refuses it.
 4. **Rate** every final checkpoint with `scripts/benchmark.py`, and with `--tag` and the search flags when the arm changes the search. The benchmark is the verdict; the in-run curves (`scripts/compare_runs.py`, TensorBoard) are the explanation.
 5. **Tabulate** with `scripts/compare_runs.py runs/<arm>-*`, and paste the table.
