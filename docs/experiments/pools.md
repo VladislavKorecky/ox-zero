@@ -13,7 +13,10 @@ A pool member `<run>-gen_NNN.pt` is the player `<run>/gen_NNN`. The uniform sear
 
 ## Manifest
 
-*Empty until the calibration runs (experiment 01) seed the pools.*
-
 | Board | File | Origin (run, seed, generation, command) | sha256 | Frozen |
 |---|---|---|---|---|
+| 6x6 | `six-a-gen_005.pt` | `six-a`, seed 0, generation 5, `uv run python scripts/train.py --name six-a --size 6 --generations 20 --seed 0 --device cpu` | `05448fcca04a8a43211ee1d263e20e241a17cc178b4b1d1b46b518c2373de7eb` | 2026-10-11 |
+| 6x6 | `six-a-gen_010.pt` | `six-a`, seed 0, generation 10, `uv run python scripts/train.py --name six-a --size 6 --generations 20 --seed 0 --device cpu` | `8fa78b3e7959803c26ad08e3ee1145bbcac2002126420295541cf969125d7ec0` | 2026-10-11 |
+| 6x6 | `six-a-gen_015.pt` | `six-a`, seed 0, generation 15, `uv run python scripts/train.py --name six-a --size 6 --generations 20 --seed 0 --device cpu` | `a9c06f096ae5fa9b031fb63058742d373d8feb365e400ea5b33a9393e9163dd8` | 2026-10-11 |
+
+The 6x6 references come from `six-a`'s first 20 generations, which were interrupted once (Ctrl-C during generation 6) and resumed with the same command ([open-questions.md](../design/open-questions.md#results-2026-10-10-the-first-6x6-run)). A rebuild may therefore not reproduce the hashes even on the same machine; if it does not, start a new 6x6 log as the rules above say.
