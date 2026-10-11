@@ -13,7 +13,7 @@ A pool member `<run>-gen_NNN.pt` is the player `<run>/gen_NNN`. The uniform sear
 
 ## Manifest
 
-**8x8 is the testbed** ([experiment 01](01-testbed-and-noise-floor.md)); its pool is frozen as of 2026-10-12 and defines the scale every experiment is rated on. The 6x6 pool is kept for 6x6 runs.
+**8x8 is the testbed** ([experiment 01](01-testbed-and-noise-floor.md)); its pool was seeded and frozen on 2026-10-11 and declared the testbed's scale on 2026-10-12; it defines the scale every experiment is rated on. The 6x6 pool is kept for 6x6 runs.
 
 | Board | File | Origin (run, seed, generation, command) | sha256 | Frozen |
 |---|---|---|---|---|
@@ -26,4 +26,4 @@ A pool member `<run>-gen_NNN.pt` is the player `<run>/gen_NNN`. The uniform sear
 
 The 6x6 references come from `six-a`'s first 20 generations, which were interrupted once (Ctrl-C during generation 6) and resumed with the same command ([open-questions.md](../design/open-questions.md#results-2026-10-10-the-first-6x6-run)). That does not affect a rebuild: resume is bit-for-bit on the same device ([engineering.md](../design/engineering.md#devices-and-determinism)).
 
-The 8x8 references were trained on `mps` (faster than `cpu` at 8x8, [experiment 01](01-testbed-and-noise-floor.md)), so a rebuild must also use `mps` on the same machine type. Bit-for-bit determinism is tested only on `cpu`; on `mps` one check exists: `probe8-mps` and `eight-a` (both seed 0) produced identical generation-1 weights, while the `cpu` probe differed. A full 30-generation `mps` rebuild is untested, so compare the hashes before trusting it. The benchmark games themselves are always played on `cpu`.
+The 8x8 references were trained on `mps` (faster than `cpu` at 8x8, [experiment 01](01-testbed-and-noise-floor.md)), so a rebuild must also use `mps` on the same machine type, and run uninterrupted. Bit-for-bit determinism (including resume) is tested only on `cpu`; on `mps` one check exists: `probe8-mps` and `eight-a` (both seed 0) produced identical generation-1 weights, while the `cpu` probe differed. A full 30-generation `mps` rebuild is untested, so compare the hashes before trusting it. The benchmark games themselves are always played on `cpu`.

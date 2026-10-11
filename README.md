@@ -2,7 +2,7 @@
 
 An [AlphaZero](https://arxiv.org/abs/1712.01815)-style engine for **OXOX**, a two-player board game derived from Tic-tac-toe, together with tooling for analyzing positions and studying the game.
 
-> **Status:** early development. The game rules (roadmap step 1), the CLI (step 2) and the engine (step 3: search and network) are done; the training pipeline (step 4) is built; the first 6x6 run is recorded in [open-questions.md](docs/design/open-questions.md#results-2026-10-10-the-first-6x6-run). The CLI runs on the engine; it plays on search alone until a checkpoint for the board size exists under `checkpoints/` (`--size` selects the board; 12 by default).
+> **Status:** early development. The game rules (roadmap step 1), the CLI (step 2) and the engine (step 3: search and network) are done; the training pipeline (step 4) is built; the first 6x6 run is recorded in [open-questions.md](docs/design/open-questions.md#results-2026-10-10-the-first-6x6-run). The experiment harness is calibrated: training experiments run on 8x8 (`--device mps`), rated on a shared benchmark scale ([experiment 01](docs/experiments/01-testbed-and-noise-floor.md)). The CLI runs on the engine; it plays on search alone until a checkpoint for the board size exists under `checkpoints/` (`--size` selects the board; 12 by default).
 
 ## The game
 
