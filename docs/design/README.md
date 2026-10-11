@@ -24,6 +24,8 @@ Everything here was decided in a design discussion before any engine code existe
 | [upgrades.md](upgrades.md) | Deferred improvements and what each should buy. |
 | [open-questions.md](open-questions.md) | Constants and choices that wait on experiments. |
 
+Measured experiments and their verdicts are not here: they are logged in [../experiments/](../experiments/README.md), and a verdict that changes a decision edits the file above and links back.
+
 ## Notation used throughout
 
 - `S`: board side length; the board has `S²` cells. Cells are `(row, col)`, zero-based, row 0 at the top.

@@ -16,7 +16,7 @@ Everything importable lives in `src/ox_zero/`. `tests/` mirrors its layout.
 | `cli` | The `ox-zero` command: commands, rendering, JSON reports, the sandbox, and the engine port. | Done (step 2), running the engine |
 | `gui` | Graphical analysis interface. | Not started (step 5) |
 
-`scripts/` holds runners outside the package: `train.py` starts or resumes a training run, `evaluate.py` pits two checkpoints, and the rest are benchmarks and experiments ([scripts/README.md](../scripts/README.md)). Nothing imports them.
+`scripts/` holds runners outside the package: `train.py` starts or resumes a training run, `evaluate.py` pits two checkpoints, `benchmark.py` rates one on the shared Elo scale, `compare_runs.py` tabulates runs, and the rest are benchmarks and experiments ([scripts/README.md](../scripts/README.md)). Nothing imports them.
 
 ## Dependency rule
 
@@ -82,7 +82,7 @@ The CLI needs analysis results, but it must not dictate how an engine works. So 
 
 Only the `gui` (roadmap step 5), and it is not designed yet either (see below).
 
-The engine and the training pipeline are built to the design in [docs/design](design/README.md): search, network and the evaluator seam ([search.md](design/search.md), [network.md](design/network.md)), the training loop ([training.md](design/training.md)), and their place in the code ([engineering.md](design/engineering.md)). Improvements deferred from version 1 are in [upgrades.md](design/upgrades.md), and constants that wait on experiments, with the first 6x6 run's numbers, in [open-questions.md](design/open-questions.md).
+The engine and the training pipeline are built to the design in [docs/design](design/README.md): search, network and the evaluator seam ([search.md](design/search.md), [network.md](design/network.md)), the training loop ([training.md](design/training.md)), and their place in the code ([engineering.md](design/engineering.md)). Improvements deferred from version 1 are in [upgrades.md](design/upgrades.md), and constants that wait on experiments, with the first 6x6 run's numbers, in [open-questions.md](design/open-questions.md). Training experiments and their verdicts are logged in [docs/experiments](experiments/README.md).
 
 The engine is connected to the CLI ([plan 03](plans/archive/03-cli-adapter.md), [cli-integration.md](design/cli-integration.md)): `Analysis` carries the engine's chosen move, and the placeholder is test tooling only. Training runs live in `runs/<name>/`, not `checkpoints/`: the CLI auto-loads the newest checkpoint of the requested size (`--size`, default 12) under `checkpoints/`, so a trained model of any size reaches it by being copied or linked there, or passed with `--model`.
 

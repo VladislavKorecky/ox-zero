@@ -1,6 +1,6 @@
 # Upgrades
 
-Everything considered during the design and deliberately left out of version 1. Nothing here is rejected. Version 1 is the paper-faithful baseline; each item is a hypothesis to test against it, with a measured Elo difference (see [training.md](training.md#evaluation)) as the verdict.
+Everything considered during the design and deliberately left out of version 1. Nothing here is rejected. Version 1 is the paper-faithful baseline; each item is a hypothesis to test against it, with a measured Elo difference as the verdict: the benchmark rating on the shared per-board-size scale ([training.md](training.md#evaluation)), recorded in [docs/experiments/](../experiments/README.md).
 
 Columns: what the change is, what it is expected to buy, where the idea comes from, and roughly when it becomes worth trying.
 
