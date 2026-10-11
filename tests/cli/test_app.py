@@ -7,6 +7,7 @@ exactly what a pipe would receive.
 
 import json
 import math
+from pathlib import Path
 
 import pytest
 import torch
@@ -21,7 +22,7 @@ from ox_zero.engine import network_evaluator
 from ox_zero.engine.evaluator import UniformEvaluator
 from ox_zero.engine.network import Network, NetworkConfig
 from ox_zero.engine.network_evaluator import NetworkEvaluator
-from ox_zero.game import play, to_board_string
+from ox_zero.game import BOARD_SIZE, play, to_board_string
 from ox_zero.training.checkpoint import save_checkpoint
 
 runner = CliRunner()
@@ -42,7 +43,10 @@ def fast_engine(request, monkeypatch):
     if request.node.get_closest_marker("real_engine"):
         return calls
 
-    def load(model, seed, device="cpu"):
+    # `size` is accepted (the CLI passes it) but not recorded: the recorded
+    # tuples keep their shape, and the size reaching the real loader is
+    # covered by the `real_engine` tests below.
+    def load(model, seed, device="cpu", size=BOARD_SIZE):
         calls.append((model, seed))
         if model is not None and not model.exists():
             raise FileNotFoundError(f"model checkpoint not found: {model}")
@@ -241,6 +245,74 @@ def test_sandbox_rejects_flags_that_do_not_apply(launched, flag):
     assert run("sandbox", *args).exit_code == 2
 
 
+# --- --size --------------------------------------------------------------------
+# The board size is a command-line choice (docs/cli.md, `--size`). These run
+# on the placeholder engine, which plays any size, so they prove the *parse*
+# size; the `real_engine` tests further down prove the search and the loader.
+
+
+def test_analyze_size_renders_a_small_board():
+    result = run("analyze", "--size", "6", "2,2", "3,3", "--json")
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.stdout)
+    assert len(report["board"]) == 36
+    assert len(report["moves"]) == 34  # 36 cells minus the two played
+    for entry in report["moves"]:
+        row, col = entry["move"]
+        assert 0 <= row < 6 and 0 <= col < 6
+
+
+def test_a_board_string_of_the_given_size_parses():
+    board = "X" + "_" * 35
+    result = run("analyze", "--size", "6", board, "--json")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["to_move"] == "O"
+    # Without --size the same string is read at 12x12 and rejected.
+    result = run("analyze", board, "--json")
+    assert result.exit_code == 2
+    assert "144 characters" in result.stderr
+
+
+def test_a_move_off_the_small_board_is_a_usage_error():
+    result = run("analyze", "--size", "6", "7,7")
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    lines = result.stderr.splitlines()
+    assert "off the 6x6 board" in lines[0]
+    assert lines[1] == "  7,7"
+    assert lines[2] == "  ^^^"
+
+
+def test_size_below_three_is_rejected():
+    # 3 is the shortest side that holds a line of three; smaller boards
+    # cannot be won. Typer enforces the bound and names it.
+    result = run("analyze", "--size", "2")
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert "x>=3" in result.stderr
+    result = run("analyze", "--size", "3", "--json")
+    assert result.exit_code == 0, result.output
+    assert len(json.loads(result.stdout)["board"]) == 9
+
+
+def test_sandbox_launches_at_the_given_size(launched):
+    result = run("sandbox", "--size", "6", "2,2")
+    assert result.exit_code == 0, result.output
+    session, _ = launched[0]
+    assert session.state.size == 6
+    assert session.history == [(2, 2)]
+
+    run("sandbox", "--size", "6")
+    empty = launched[1][0]
+    assert empty.state.size == 6
+    assert empty.history == []
+
+
+@pytest.mark.parametrize("command", ["analyze", "best", "sandbox"])
+def test_size_is_in_the_help(command):
+    assert "--size" in run(command, "--help").stdout
+
+
 # --- Loading the real engine ---------------------------------------------------
 # These tests opt out of the placeholder fixture. They run with the working
 # directory in `tmp_path`, so the default `checkpoints/` root is empty unless
@@ -326,12 +398,26 @@ def test_default_root_is_checkpoints_in_the_working_directory(workdir):
 
 @pytest.mark.real_engine
 @pytest.mark.parametrize("command", ["analyze", "best", "sandbox"])
-def test_board_size_mismatch_is_a_usage_error(workdir, launched, command):
-    path = write_checkpoint(workdir / "small.pt", size=4)
-    result = run(command, *POSITION, "--model", str(path))
+@pytest.mark.parametrize(
+    ("checkpoint_size", "args", "message"),
+    [
+        # A small checkpoint against the default 12x12 parse.
+        (4, [*POSITION], "checkpoint is for a 4x4 board, position is 12x12"),
+        # A 12x12 checkpoint against `--size 4`. No position: `5,5` would be
+        # off a 4x4 board and fail in the parser, before the engine loads.
+        (12, ["--size", "4"], "checkpoint is for a 12x12 board, position is 4x4"),
+    ],
+    ids=["small-model", "small-board"],
+)
+def test_board_size_mismatch_is_a_usage_error(
+    workdir, launched, command, checkpoint_size, args, message
+):
+    # An explicit --model is never overridden: a mismatch is an error.
+    path = write_checkpoint(workdir / "model.pt", size=checkpoint_size)
+    result = run(command, *args, "--model", str(path))
     assert result.exit_code == 2
     assert result.stdout == ""
-    assert "4x4" in result.stderr and "12x12" in result.stderr
+    assert message in result.stderr
     assert launched == []
 
 
@@ -396,3 +482,72 @@ def test_device_is_ignored_without_a_model(workdir):
 @pytest.mark.real_engine
 def test_the_cli_loader_is_the_adapter(workdir):
     assert app_module.load_engine is adapter_module.load_engine
+
+
+# --- --size on the real engine ---------------------------------------------------
+# X at 0,0 and O at 0,1: X completes X O X at 0,2, on any board of side >= 3.
+
+
+@pytest.mark.real_engine
+def test_best_size_finds_a_win_in_one_on_a_small_board(workdir):
+    result = run("best", "--size", "6", "0,0", "0,1", "--simulations", "50")
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == "0,2"
+
+
+@pytest.mark.real_engine
+def test_analyze_size_finds_a_win_in_one_on_a_small_board(workdir):
+    result = run("analyze", "--size", "6", "0,0", "0,1", "--simulations", "50", "--json")
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.stdout)
+    assert report["top"][0]["move"] == [0, 2]
+    assert len(report["board"]) == 36
+
+
+@pytest.mark.real_engine
+def test_an_explicit_checkpoint_of_the_given_size_loads(workdir):
+    path = write_checkpoint(workdir / "six.pt", size=6)
+    result = run(
+        "analyze", "--size", "6", "--model", str(path), "2,2", "--simulations", "10", "--json"
+    )
+    assert result.exit_code == 0, result.output
+    assert "6x6" in result.stderr
+    assert len(json.loads(result.stdout)["board"]) == 36
+
+
+@pytest.mark.real_engine
+def test_auto_load_picks_the_newest_checkpoint_of_the_size(workdir):
+    root = workdir / "checkpoints"
+    big = write_checkpoint(root / "run" / "gen_002.pt", size=12, generation=2, seed=2)
+    six = write_checkpoint(root / "six" / "gen_001.pt", size=6, generation=1, seed=1)
+
+    # Generation 2 is newer, but it is 12x12: a 6x6 request skips it.
+    engine, notice = load_engine(None, None, root=root, size=6)
+    assert engine.size == 6
+    assert str(six) in notice and "generation 1" in notice
+    for size in ({"size": 12}, {}):  # explicit, and the default
+        engine, notice = load_engine(None, None, root=root, **size)
+        assert engine.size == 12
+        assert str(big) in notice
+
+    # The command the size-aware auto-load exists for: no --model at all.
+    result = run("analyze", "--size", "6", "2,2", "--simulations", "10", "--json")
+    assert result.exit_code == 0, result.output
+    assert len(json.loads(result.stdout)["board"]) == 36
+    assert "6x6" in result.stderr and str(Path("checkpoints/six/gen_001.pt")) in result.stderr
+
+
+@pytest.mark.real_engine
+def test_no_checkpoint_of_the_size_falls_back_to_uniform_search(workdir):
+    root = workdir / "checkpoints"
+    write_checkpoint(root / "run" / "gen_002.pt", size=12, generation=2)
+
+    engine, notice = load_engine(None, None, root=root, size=6)
+    assert isinstance(engine, SearchEngine)
+    assert isinstance(engine.evaluator, UniformEvaluator)
+    assert "6x6" in notice and "uniform priors" in notice
+
+    # The 12x12 file under checkpoints/ is not an error for a 6x6 analysis.
+    result = run("best", "--size", "6", "0,0", "0,1", "--simulations", "50")
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == "0,2"
