@@ -19,6 +19,7 @@ src/ox_zero/
     replay.py    the replay buffer (expiry by generation, persisted per generation); augmentation
     trainer.py   AdamW, one training step, one generation of steps; TrainConfig
     evaluate.py  checkpoint tournaments (paired openings, two trees per game) and the Elo fit; EvalConfig
+    benchmark.py the cross-run benchmark: reference pool, match log, joint Elo fit, bootstrap intervals (plan 06)
     metrics.py   one JSON Lines row per generation, mirrored to TensorBoard
     checkpoint.py save / load of weights + configs + optimiser + RNG state; latest_checkpoint   (plan 03)
     run.py       the generation loop, resume; RunConfig
@@ -29,7 +30,9 @@ scripts/
   make_checkpoint.py  a random-weights checkpoint, to try --model before training exists
   train.py       starts or resumes a run: builds a RunConfig and calls training.run
   evaluate.py    pits two checkpoints, or one against the uniform search, and prints the Elo gap
-runs/            training runs, gitignored
+  benchmark.py   rates one checkpoint on the shared per-board-size scale (plan 06)
+  compare_runs.py  one Markdown row per run, or one metric over generations (plan 06)
+runs/            training runs and runs/benchmarks/, gitignored
 checkpoints/     models the CLI loads, gitignored
 ```
 
@@ -66,7 +69,7 @@ The rules stay immutable and functional; the tree is the one place with mutable 
 
 **Decided:** frozen dataclasses with defaults, one per concern: `NetworkConfig` (blocks, filters, value hidden size), `SearchConfig` (`c_base`, `c_init`, noise `ε` and `α`, simulations, temperature cutoff, root expansion), `SelfPlayConfig` (games per generation, parallel games, simulations per move), `TrainConfig` (batch size, steps per generation, learning rate, weight decay, buffer generations `K`), `EvalConfig` (nearest opponents, at least 1; ladder distance; games per colour; simulations). `RunConfig` bundles them with the run's name, board size, seed and generation target. Board size is part of the run configuration and stored alongside.
 
-A checkpoint is a single `torch.save` file containing the model weights, optimiser state, every config, the board size, the generation number, and RNG state. A checkpoint therefore fully describes itself: the loader rebuilds the exact architecture and encoding without any external file. No YAML layer; a run is configured in code (`scripts/train.py`).
+A checkpoint is a single `torch.save` file containing the model weights, optimiser state, every config, the board size, the generation number, and RNG state. A checkpoint therefore fully describes itself: the loader rebuilds the exact architecture and encoding without any external file. No YAML layer; a run is configured in code (`scripts/train.py`), and since plan 06 every search constant (`c_init`, `c_base`, `α`, `ε`, the temperature cutoff, the tournament's simulations) is also a flag of `scripts/train.py`, so an experiment arm changes a flag rather than the code.
 
 **Format (plan 03):** the file holds plain data only (tensors, numbers, strings, lists, dicts), with configs stored as field dicts, and is loaded with `torch.load(..., weights_only=True)`. Unpickling arbitrary objects can execute code, so a downloaded checkpoint must never need it; the loader rebuilds the dataclasses itself. A `format_version` field guards future changes. Saves are atomic (temporary file, then rename), so an interrupted save never leaves a truncated newest checkpoint.
 
@@ -80,6 +83,15 @@ runs/<name>/
   matches.jsonl    one row per tournament pairing
   ratings.json     the current Elo table, rewritten each generation
   tensorboard/     event files, unless turned off
+```
+
+The cross-run benchmark ([plan 06](../plans/06-experiment-harness.md)) keeps its state beside the runs, one directory per board size:
+
+```
+runs/benchmarks/<S>x<S>/
+  pool/<run>-gen_NNN.pt  frozen reference checkpoints, recorded in docs/experiments/pools.md
+  matches.jsonl    one row per benchmark pairing, played on cpu, never replayed
+  ratings.json     the joint Elo fit with bootstrap intervals, anchored at uniform@100
 ```
 
 Why not `checkpoints/`: a run is a working directory (replay buffer, metrics, every generation), while `checkpoints/` is the library of models the CLI picks from, the newest one per board size. Since [plan 05](../plans/archive/05-cli-board-size.md) the CLI's auto-load filters by `--size`, so a 6x6 model in `checkpoints/` no longer breaks 12x12 commands. To use a trained model from the CLI, copy or link its checkpoint under `checkpoints/`. A model worth sharing is attached to a GitHub release, not committed.
