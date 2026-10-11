@@ -84,7 +84,7 @@ Deviations from the plan's sequence, to fit the night: `six-a`'s generations 21�
 
 - **The tournament is two thirds of an 8x8 generation** (133 of 202 s). The run's own tournament is monitoring, not the verdict, since the benchmark rates the result; it is the obvious lever if the cadence ever needs to shrink (fewer `--eval-opponents` or `--eval-games`). Recorded, not acted on.
 - **Benchmark cost.** A 6x6 benchmark (5 pairings, 72 games each) takes about 1.5 minutes on `cpu`; an 8x8 one (5 pairings, 128 games each) about 14 minutes while training shares the machine, about 8 minutes with the machine to itself (the three `gen_030` benchmarks: 476–512 s).
-- **Running three seeds in parallel** on one `mps` device took 116–126 minutes each against 85 for `eight-a` alone: about twice the throughput of running them one after another. With that, a two-arm, three-seed 8x8 experiment (six runs) is two parallel batches of about 2 hours plus twelve benchmarks of about 8 minutes, roughly 5.5–6 hours: it fits a night.
+- **Running three seeds in parallel** on one `mps` device took 116–126 minutes each against 85 for `eight-a` alone: about twice the throughput of running them one after another. With that, a two-arm, three-seed 8x8 experiment (six runs) is two parallel batches of about 2 hours plus six final benchmarks of about 8 minutes (twelve if the halfway generations are rated too), roughly 5 hours: it fits a night.
 
 ## Results
 
@@ -156,9 +156,9 @@ Observations:
 - **Every seed learned, and kept learning.** Generation 15 → 30: `eight-b` +49 → +360, `eight-c` +63 → +334, `eight-d` +92 → +308. The reference run `eight-a` (+25 → +331) lands inside the seeds' range, so no lineage bias shows at this resolution.
 - **Seed spread (the noise floor): 52 Elo** at generation 30 (+308 to +360) and 43 Elo at generation 15 (+49 to +92), the range of three seeds. A range of three is itself a rough estimate; read "about 50 Elo".
 - **The bootstrap intervals are wider than the seed spread**: about 85–90 Elo wide (±44) at generation 30, against a 52 Elo range. Plan 06 lists this as a point to report rather than act on, because the remedy would change the pool. What it means: with five references and 128 games per pairing, game-sampling noise is about as large as the seed-to-seed difference it is supposed to resolve, so the measured spread is mostly benchmark noise and the true seed component may be smaller. A difference between two arms is believable only beyond both, roughly 50–90 Elo; finer resolution needs more references near the candidates' strength (a pool extension, see the next point) or more seeds per arm. **Decision for Vláďa**; the pool is unchanged.
-- **The pool is thin at the top.** The references are −204, −123, 0, +71 and +168; every final candidate is 140–190 Elo above the strongest, scores 0.74–0.84 against it and 0.89–0.98 against `gen_005` and `gen_010`, which therefore add little information. Later experiments, whose candidates will be stronger still, will push this further. The rules allow extending a pool (never replacing it): a later `eight-a` generation that no criterion rates (`gen_025`) would be the natural candidate. Not done here, because it is a choice about the scale.
+- **The pool is thin at the top.** The references are −204, −123, 0, +71 and +168; every final candidate is 140–192 Elo above the strongest, scores 0.74–0.84 against it and 0.89–0.98 against `gen_005` and `gen_010`, which therefore add little information. Later experiments, whose candidates will be stronger still, will push this further. The rules allow extending a pool (never replacing it): a later `eight-a` generation that no criterion rates (`gen_025`) would be the natural candidate. Not done here, because it is a choice about the scale.
 - **The scale is not quite transitive.** `eight-c/gen_015` beats `uniform@100` 0.852 but only breaks even with `eight-a/gen_010` (0.492), which rates −123; `eight-a/gen_015` beats `gen_005` and `gen_010` 0.93 and 0.90 but loses to both uniform players. Early networks and the uniform search are good at different things, and one number per player averages over that. Another reason the near-strength references matter most.
-- **Measurable.** Unlike 6x6, both colours win games between near-equal 8x8 networks: `eight-c/gen_015` against `gen_020` won 20 of 64 as X and 34 of 64 as O, score 0.422. Scores against each candidate's nearest-rated reference spread from 0.328 to 0.836.
+- **Measurable.** Unlike 6x6, both colours win games between near-equal 8x8 networks: `eight-c/gen_015` against `gen_020` won 20 of 64 as X and 34 of 64 as O, score 0.422. Scores against each candidate's nearest-rated reference spread from 0.445 to 0.836.
 - **Early 8x8 networks are weaker than the uniform search.** Generations 5 and 10 rate −204 and −123, and the run's own Elo at generation 10 (+435 over its random generation 0) says nothing about strength against a non-network player. 8x8 needs about 15 generations to reach the uniform search's level.
 
 ### compare_runs.py
@@ -188,7 +188,7 @@ The halfway generations (`--at 15` for 8x8, `--at 20` for 6x6):
 
 ### Draw rates
 
-The highest self-play draw rate of any generation was 5.5% (`six-a`) and 2.3% (`eight-d`) on 8x8, all below the 20% trigger for a win/draw/loss value head ([network.md](../design/network.md#value-head)).
+The highest self-play draw rate of any generation was 5.5% on 6x6 (`six-a`) and 2.3% on 8x8 (`eight-d`), all below the 20% trigger for a win/draw/loss value head ([network.md](../design/network.md#value-head)).
 
 ## Verdict
 
@@ -196,17 +196,17 @@ Applied to the measured seeds `eight-b`, `eight-c`, `eight-d` (8x8) and to `six-
 
 | Criterion | 8x8 | 6x6 |
 |---|---|---|
-| (a) Headroom: final − halfway > seed spread (52) | **Pass**: +311, +271, +215 | `six-a` only: +126 (generation 20 → 40); no measured seeds |
+| (a) Headroom: final − halfway > seed spread (52) | **Pass**: +311, +271, +216 | `six-a` only: +126 (generation 20 → 40); no measured seeds |
 | (b) Cadence: one baseline run ≤ about 90 min | **Pass**: `eight-a` 84.7 min on `mps`, slowest generation 244 s | Pass: `six-a` 51 min for 40 generations on `cpu` |
-| (c) Measurability: near-strength scores not pinned at 0.5 | **Pass**: 0.33–0.84 against the nearest-rated reference, both colours win | **Fail**: 0.500 and 0.514 for `gen_020` against `gen_015` and `gen_010`; O wins almost every game between near equals |
+| (c) Measurability: near-strength scores not pinned at 0.5 | **Pass**: 0.45–0.84 against the nearest-rated reference, both colours win | **Fail**: 0.500 and 0.514 for `gen_020` against `gen_015` and `gen_010`; O wins almost every game between near equals |
 
 **Verdict: 8x8 is the testbed.** It passes all three criteria; 6x6 fails measurability, because between networks of similar strength the second player wins nearly every game and a paired-colour score collapses to 0.5.
 
-**Noise floor: about 50 Elo** between seeds of the same configuration at generation 30 (52 measured, range of three), with 95% bootstrap intervals of about ±44 Elo per rating. An experiment's arms should differ by more than both before the difference is called real; protocol rule 2 (three seeds when two disagree by more than the floor) uses 50 Elo.
+**Noise floor: about 50 Elo** between seeds of the same configuration at generation 30 (52 measured, range of three), with 95% bootstrap intervals of about ±44 Elo per rating. Since the intervals are as wide as the spread, most of the 52 may be benchmark noise. Working rule: an arm difference under 50 Elo is noise, 50–90 Elo is a grey zone that needs the third seed (protocol rule 2), and only a difference beyond about 90 Elo stands on two seeds.
 
 **Repeatability:** confirmed, nine of nine rows bit-identical including a side-swapped pairing.
 
-**Cost:** an 8x8 baseline run is 85 minutes on `mps` with the machine to itself; three in parallel take about 2 hours; an 8x8 benchmark is about 8 minutes on `cpu`. A two-arm, three-seed experiment is roughly 5.5–6 hours.
+**Cost:** an 8x8 baseline run is 85 minutes on `mps` with the machine to itself; three in parallel take about 2 hours; an 8x8 benchmark is about 8 minutes on `cpu`. A two-arm, three-seed experiment is roughly 5 hours (six final benchmarks).
 
 **Pools:** the 8x8 pool (`eight-a` generations 5, 10, 20) is frozen as the testbed's scale ([pools.md](pools.md)). The 6x6 pool stays recorded for completeness.
 

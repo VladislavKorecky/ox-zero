@@ -104,7 +104,7 @@ A run's checkpoints store `search`, `selfplay`, `train`, `eval` and `run` in `co
 - float32 only.
 - Every source of randomness is seeded from one run seed and its state is checkpointed, so a resumed run continues rather than restarts. One NumPy generator drives Dirichlet noise, move sampling, replay-buffer sampling, augmentation (the symmetry per example) and the tournament openings; torch is seeded once, for the initial weights. Single-threaded lockstep draws from the shared generator in a fixed order, so one generator is one state to checkpoint.
 - Bit-exact reproducibility across devices is not a goal; reproducibility of a run on one device is. As built (plan 04), resume is bit-for-bit on the same device: a run stopped and resumed gives the same weights and metrics as one run straight through (a test). The device is not part of the run config, so resuming on another backend is allowed, but changes the numerics from then on.
-- `scripts/train.py --device` defaults to `auto` (runtime selection), unlike the CLI's `cpu`: self-play batches are up to `parallel` positions, not 1. On 6x6 `cpu` measured faster anyway (below), so the 6x6 run used `--device cpu`; on 8x8 `mps` is twice as fast, so 8x8 runs use `--device mps`.
+- `scripts/train.py --device` defaults to `auto` (runtime selection), unlike the CLI's `cpu`: self-play batches are up to `parallel` positions, not 1. On 6x6 `cpu` measured faster anyway (below), so the 6x6 run used `--device cpu`; on 8x8 `mps` is twice as fast, so 8x8 runs use `--device mps`. Run determinism is tested on `cpu` only; on `mps` two seed-0 runs gave identical generation-1 weights ([experiment 01](../experiments/01-testbed-and-noise-floor.md)), which is evidence, not a test.
 
 ## Testing
 
