@@ -47,8 +47,10 @@ def main() -> None:
     save_checkpoint(args.out, network, generation=0, configs={"search": ANALYSIS})
     print(args.out)
 
-    # Ask the CLI's own rule rather than re-implementing it here.
-    newest = latest_checkpoint(Path("checkpoints"))
+    # Ask the CLI's own rule rather than re-implementing it here. The CLI
+    # auto-loads the newest checkpoint *of the board size it analyses*, so
+    # the question is whether this file is now the newest of its own size.
+    newest = latest_checkpoint(Path("checkpoints"), args.size)
     if newest is not None and newest.resolve() == args.out.resolve():
         print("Warning: this is now the newest checkpoint; the CLI will load it automatically.")
 
