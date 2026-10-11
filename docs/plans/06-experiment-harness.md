@@ -50,17 +50,18 @@ Code-level choices, plus three that touch the design and need Vláďa's approval
 |---|---|---|
 | **Search flags build `RunConfig.search`** | `scripts/train.py` gains `--temperature-cutoff N` (default `None`: the per-size table), `--c-init`, `--c-base`, `--dirichlet-alpha` (default `None`: `11 / S²`), `--dirichlet-epsilon`; `build_config` passes them to `SearchConfig(root_noise=True, ...)`. Defaults equal `SELF_PLAY` field for field, `None` staying `None` (not resolved to the table's value), so an old checkpoint's stored `search` config compares equal and `six-a` resumes. | Decision 3 above. Resume already refuses a changed `search` field, so an experiment arm with a different cutoff is a different run name, as it should be. |
 | **`--eval-simulations` decouples the tournament from self-play** | New flag, default `None` meaning "same as `--simulations`" (today's behaviour). `EvalConfig.simulations` takes it. | An experiment that varies self-play simulations must hold the measurement fixed, or it measures two things. |
-| **The player is a (checkpoint, search) pair** | A benchmark player is named `<run>/gen_NNN` for a checkpoint played with the baseline evaluation search, `<run>/gen_NNN@<tag>` when played with a non-default search config (`--tag` is required then), and `uniform@<simulations>` for the uniform search. References always play the baseline `EVALUATION` search at the pool's simulation count. | Search upgrades change the engine, not only the network. Naming the pair lets one checkpoint be rated with and without an upgrade, and keeps the references fixed while candidates vary. |
-| **Reference pool per board size** (**needs approval**: a new top-level directory) | `benchmarks/<S>x<S>/pool/*.pt`: copies of frozen checkpoints named `<run>-gen_NNN.pt`, gitignored (`*.pt` already is). Always also `uniform@100` and `uniform@400`. `benchmarks/README.md` is the manifest: each reference's origin (run, seed, generation, command) and the date the pool was frozen. The 6x6 pool is seeded from `six-a` generations 5, 10 and 20; the 8x8 pool from the calibration baseline (step 6). A pool is frozen once and only ever extended, never replaced: changing a reference changes the scale. | Uniform-search players need no file and exist on every machine; they anchor the scale and cover the weak end. Early-generation checkpoints spread the pool across strengths so that a strong candidate still loses some games and the fit stays informative (decision 4 above). Three checkpoints plus two uniform players are five references: enough to pin a rating, few enough to run in minutes. |
-| **One match log per board size, committed** (**needs approval**: generated data in git) | `benchmarks/<S>x<S>/matches.jsonl`, one row per (candidate, reference) pairing: `{"a": name, "b": name, "wins", "draws", "losses", "as_x": [w, d, l], "as_o": [w, d, l], "openings", "simulations", "seed", "date", "a_sha256", "b_sha256"}`. `ratings.json` is derived from it (every player's rating, interval and game count) and rewritten on each benchmark. Both committed. | The log is the ground truth of every experiment's rating; the checkpoints it names are not shareable (gitignored, unreproducible across machines), the log is. A joint fit over the whole log means every new candidate's games also sharpen the references' ratings. The hashes catch a swapped pool file: a reference whose hash changed is refused. |
+| **The player is a (checkpoint, search) pair** | A benchmark player is named `<run>/gen_NNN` for a checkpoint played with the baseline evaluation search, `<run>/gen_NNN@<tag>` when played with a non-default search config (`--tag` is required then), and `uniform@<simulations>` for the uniform search. The candidate always plays `CANDIDATE_SIMULATIONS = 100` per move; references always play the baseline `EVALUATION` search at their own simulation count (100 for pool checkpoints, `N` for `uniform@N`). The only candidate search flags the benchmark accepts are the ones the evaluation search consumes: `--c-init`, `--c-base`, and later each upgrade's toggle. Dirichlet `α`/`ε` do nothing without root noise and a temperature cutoff above 0 would sample moves, the thing evaluation turns off, so they are not offered. | Search upgrades change the engine, not only the network. Naming the pair lets one checkpoint be rated with and without an upgrade, and keeps the references fixed while candidates vary. |
+| **`play_match` gains per-side search settings** | `play_match(a, b, size, games_per_colour, simulations, rng, search=EVALUATION, *, b_simulations=None, b_search=None)`: the two new keyword arguments default to `a`'s values, so `run.py` and `scripts/evaluate.py` are unchanged. `MatchGame` keeps one `(simulations, search)` per side, keyed by `Mark` like its trees, and `play_if_ready` uses the mover's budget. | Today both sides share one `simulations` and one `search`. A `uniform@400` reference against a 100-simulation candidate, or a candidate with a non-default search against a baseline reference, needs them per side. |
+| **Reference pool per board size** (**needs approval**: a new top-level directory) | `benchmarks/<S>x<S>/pool/*.pt`: copies of frozen checkpoints named `<run>-gen_NNN.pt`, gitignored (`*.pt` already is). A pool file's player name is its stem with the last `-gen_` turned into `/gen_`: `six-a-gen_005.pt` is the player `six-a/gen_005`, the same name the checkpoint has as a candidate, so one network is one player wherever it comes from. Always also `uniform@100` and `uniform@400`. `benchmarks/README.md` is the manifest: each reference's origin (run, seed, generation, command) and the date the pool was frozen. The 6x6 pool is seeded from `six-a` generations 5, 10 and 20; the 8x8 pool from the calibration baseline (step 6). A pool is frozen once and only ever extended, never replaced: changing a reference changes the scale. A candidate whose sha256 equals a reference's skips that pairing (it would be a self-match, which the fit rejects), so benchmarking a pool member rates it against the rest of the pool. | Uniform-search players need no file and exist on every machine; they anchor the scale and cover the weak end. Early-generation checkpoints spread the pool across strengths so that a strong candidate still loses some games and the fit stays informative (decision 4 above). Three checkpoints plus two uniform players are five references: enough to pin a rating, few enough to run in minutes. |
+| **One match log per board size, committed; the ratings file derived** (**needs approval**: generated data in git) | `benchmarks/<S>x<S>/matches.jsonl`, one row per (candidate, reference) pairing: `{"a": name, "b": name, "wins", "draws", "losses", "as_x": [w, d, l], "as_o": [w, d, l], "openings", "a_simulations", "b_simulations", "seed", "date", "a_sha256", "b_sha256"}`. Append-only, committed. A row whose `(a, b, seed, a_sha256, b_sha256)` already exists in the log is refused with a message to pick another `--seed`: with a deterministic search the same seed replays the identical games, and appending them would count the same evidence twice. `ratings.json` (every player's rating, interval and game count) is derived from the log, rewritten by the benchmark, read by `compare_runs.py` (which refits from the log itself when the file is missing), and gitignored. | The log is the ground truth of every experiment's rating; the checkpoints it names are not shareable (gitignored, unreproducible across machines), the log is. A joint fit over the whole log means every new candidate's games also sharpen the references' ratings. The hashes catch a swapped pool file: a reference whose hash changed is refused. The ratings file is not committed because it would churn on every benchmark (bootstrap draws, float formatting) and conflict between branches for no information the log does not already hold. |
 | **Anchor and scale** | Bradley-Terry over every row of the board's log, `uniform@100` fixed at 0 Elo. `elo_ratings` is generalised to any sortable key (`int` for the run's tournament, `str` here); the existing tests keep passing unchanged. One virtual draw per pair, as today. | The uniform search at 100 simulations is the one player every machine can reproduce exactly. Generation 0 of a run cannot anchor a cross-run scale: every run has a different one. |
-| **Bootstrap interval, not an analytic error** | `bootstrap_interval(rows, player, resamples=200, rng)`: resample games within each pairing (a binomial-multinomial draw of the pairing's W/D/L counts), refit, take the 2.5th and 97.5th percentiles of the player's rating. Printed as `rating [low, high]`. | The joint fit has no closed-form error with the virtual draw and a shared anchor; the bootstrap is twenty lines and honest. It measures game-sampling noise only. Seed-to-seed training noise is the other, larger component and is measured in step 6, not computed. |
-| **Benchmark game count** | `--games 50` openings per reference, each played with both colours: 100 games per reference, 500 per benchmark. | 100 games per pairing is about ±35 Elo on that link; five links pooled lands near ±20 Elo (the bootstrap reports the real figure). At the measured 0.3 s per 6x6 tournament game at 100 simulations (`six-a` generations 17–20), 400 games against the 100-simulation references cost about 2 minutes and 100 games against `uniform@400` about 2 more. 8x8 is expected to be a few times that. Cheap next to a run. |
+| **Bootstrap interval, not an analytic error** | `bootstrap_interval(rows, player, resamples=200, seed=0)`: resample games within each pairing (a multinomial draw of the pairing's game count with its observed W/D/L proportions), refit, take the 2.5th and 97.5th percentiles of the player's rating. The generator is seeded inside from `seed`, so the same log gives the same interval on every machine. Printed as `rating [low, high]`. | The joint fit has no closed-form error with the virtual draw and a shared anchor; the bootstrap is twenty lines and honest. It measures game-sampling noise only. Seed-to-seed training noise is the other, larger component and is measured in step 6, not computed. |
+| **Benchmark game count** | `--games N` openings per reference, each played with both colours; default and maximum `S²` (36 on 6x6, 64 on 8x8), so 72 games per reference and 360 per benchmark on 6x6, 128 and 640 on 8x8. More than `S²` is a usage error. | Openings are distinct first-move cells and the evaluation search is deterministic, so an opening drawn twice replays the identical pair of games and adds no evidence (`_openings` cycles after `S²`). 72 games per pairing is about ±40 Elo on that link; five links pooled lands near ±20 Elo (the bootstrap reports the real figure). At the measured 0.3 s per 6x6 tournament game at 100 simulations (`six-a` generations 17–20), 288 games against the 100-simulation references cost about 1.5 minutes and 72 games against `uniform@400` about the same again. 8x8 is expected to be a few times that. Cheap next to a run. |
 | **Repeatable openings** | The benchmark draws its openings from `--seed` (default 0) through the same `_openings` as the tournament, one generator per pairing seeded by `(seed, reference index)`. Two candidates benchmarked with the same seed face the same openings against each reference. | Paired openings across candidates remove one source of noise from an A/B. Different seeds measure the benchmark's own repeatability (step 6). |
-| **Candidate lockstep** | `scripts/benchmark.py` plays all five references' games in sequence, each pairing as one `play_match` (lockstep inside the pairing, as the tournament does). | Reuses `play_match` unchanged. Pairing-level lockstep already keeps the network's batches at 100 positions; merging pairings would need a new driver for no measurable gain at this scale. |
+| **Candidate lockstep** | `scripts/benchmark.py` plays all five references' games in sequence, each pairing as one `play_match` with the per-side settings above (lockstep inside the pairing, as the tournament does). | Reuses `play_match`. Pairing-level lockstep already keeps the network's batches at 72 to 128 positions; merging pairings would need a new driver for no measurable gain at this scale. |
 | **`compare_runs.py` reads files, computes nothing new** | `summarise(rows)` in `training/metrics.py` reduces a run's metrics rows to the final generation, final Elo, losses, mean game length, X win and draw rates, mean wall seconds per generation over the last five, and the mean self-play simulations per second. The script prints one row per run (Markdown table), merges `benchmarks/<S>x<S>/ratings.json` by player name when the run's final checkpoint is rated, and with `--key loss_value` prints that key per generation with one column per run. `--at N` summarises at generation `N` instead of the last. | A table that can be pasted into an experiment file as is. Design: dashboards are readers of the metrics files ([training.md](../design/training.md#logging)). |
-| **`docs/experiments/` is a third kind of document** (**needs approval**: new docs directory) | `docs/experiments/README.md` holds the protocol and the index; `NN-slug.md` holds one experiment: hypothesis, what changes (flags or diff), arms and seeds, exact commands, cost, results (the `compare_runs.py` table plus benchmark ratings with intervals), verdict (adopt / reject / inconclusive), and what changed in the design docs because of it. Design docs record decisions and link to the experiment that made them; plans record how code was built; experiments record measurements. The 6x6 run's section in [open-questions.md](../design/open-questions.md#results-2026-10-10-the-first-6x6-run) stays where it is (it predates the convention) and gains a pointer. | Pasting results into open-questions.md worked for one run; a dozen experiments would bury the decisions in tables. The author's own convention separates design ("settings") from plans; experiments are neither. |
-| **Testbed criteria** | The board the experiments run on is chosen in step 6 by three criteria, recorded in experiment 01: (a) *headroom*: the baseline's benchmark rating keeps rising between generation 20 and 40 by more than the seed spread; (b) *cadence*: a two-arm, three-seed experiment finishes overnight, i.e. one baseline run of the chosen length takes at most about 90 minutes; (c) *measurability*: paired-colour scores against the near-strength references are not pinned at 0.5 (per-colour results show both colours winning games). 8x8 is the expected answer if it passes (b); 6x6 is the fallback. | Vláďa's hunch (2026-10-11) is that 6x6 is too easy for upgrades to show; the data in [open-questions.md](../design/open-questions.md#results-2026-10-10-the-first-6x6-run) is ambiguous between "saturated" and "parity-pinned". Two runs settle it. Criterion (b) comes from accepting hours-long experiments but wanting them to turn around daily. |
+| **`docs/experiments/` is a third kind of document** (**needs approval**: new docs directory) | `docs/experiments/README.md` holds the protocol and the index; `NN-slug.md` holds one experiment: hypothesis, what changes (flags or diff), arms and seeds, exact commands, cost, results (the `compare_runs.py` table plus benchmark ratings with intervals), verdict (adopt / reject / inconclusive), and what changed in the design docs because of it. Design docs record decisions and link to the experiment that made them; plans record how code was built; experiments record measurements. The 6x6 run's section in [open-questions.md](../design/open-questions.md#results-2026-10-10-the-first-6x6-run) stays where it is (it predates the convention) and gains a pointer. Not to be confused with `scripts/experiments/`, which measures the *game* (random play, safe moves, exact solutions; [plan 01](archive/01-game-experiments.md)) and keeps its name and its results under `scripts/experiments/results/`; `docs/experiments/` records *training* experiments, whose runs live in `runs/`. Both READMEs say so. | Pasting results into open-questions.md worked for one run; a dozen experiments would bury the decisions in tables. The author's own convention separates design ("settings") from plans; experiments are neither. |
+| **Testbed criteria** | The board the experiments run on is chosen in step 6 by three criteria, recorded in experiment 01: (a) *headroom*: the baseline's benchmark rating at its final generation exceeds its rating at the halfway generation by more than the seed spread (generations 20 and 40 on 6x6, 15 and 30 on 8x8); (b) *cadence*: a two-arm, three-seed experiment finishes overnight, i.e. one baseline run of the chosen length takes at most about 90 minutes; (c) *measurability*: paired-colour scores against the near-strength references are not pinned at 0.5 (per-colour results show both colours winning games). 8x8 is the expected answer if it passes (b); 6x6 is the fallback. | Vláďa's hunch (2026-10-11) is that 6x6 is too easy for upgrades to show; the data in [open-questions.md](../design/open-questions.md#results-2026-10-10-the-first-6x6-run) is ambiguous between "saturated" and "parity-pinned". Two runs settle it. Criterion (b) comes from accepting hours-long experiments but wanting them to turn around daily. |
 | **8x8 calibration constants** | The provisional 6x6 constants with the board size changed: `--size 8 --generations 30 --seed 0`, everything else default (the cutoff table gives 4 moves, `α = 11/64`). `--device cpu` unless a one-generation `mps` probe is faster (as in plan 04, step 8). | Changing one thing at a time: the first 8x8 run measures cost and learnability under the known configuration. Tuning 8x8's constants is a later experiment. Thirty generations because 8x8 is expected to learn more slowly and the headroom criterion needs a curve, not a point. |
 
 ## Conventions that apply
@@ -90,15 +91,25 @@ K = TypeVar("K", int, str)                       # a sortable player key
 def elo_ratings(matches: Sequence[tuple[K, K, int, int, int]], anchor: K) -> dict[K, float]
     # Unchanged semantics; `anchor` keeps its default of 0 for int keys via an overload or
     # a keyword default, so run.py and the existing tests do not change.
+def play_match(a, b, size, games_per_colour, simulations, rng, search=EVALUATION,
+               *, b_simulations: int | None = None, b_search: SearchConfig | None = None)
+    # New keyword arguments, defaulting to a's: per-side budget and search config.
+    # MatchGame stores (simulations, search) per Mark, next to its trees.
 
 # training/benchmark.py                                   (torch only inside load_pool)
 UNIFORM_SIMULATIONS = (100, 400)
+CANDIDATE_SIMULATIONS = 100
 ANCHOR = "uniform@100"
 POOL_DIR = "pool"; MATCHES_FILE = "matches.jsonl"; RATINGS_FILE = "ratings.json"
 
 def uniform_name(simulations: int) -> str              # "uniform@100"
-def candidate_name(run: str, generation: int, tag: str | None) -> str
-    # "six-a/gen_020", "six-a/gen_020@fpu"; `run` is the checkpoint's parent directory name
+def candidate_name(path: Path, tag: str | None) -> str
+    # runs/six-a/gen_020.pt -> "six-a/gen_020" (parent directory, stem); with tag "fpu" ->
+    # "six-a/gen_020@fpu". A path inside a pool directory (pool/six-a-gen_020.pt) is named by
+    # pool_name instead, so the same network has one name wherever it comes from.
+def pool_name(path: Path) -> str
+    # pool/six-a-gen_005.pt -> "six-a/gen_005": the stem with its last "-gen_" made "/gen_".
+    # A stem without "-gen_NNN" is a ValueError naming the file.
 def benchmark_dir(root: Path, size: int) -> Path        # root / "6x6"
 
 @dataclass(frozen=True)
@@ -120,24 +131,33 @@ class BenchmarkRow:              # one pairing, from the candidate's perspective
     a: str; b: str
     wins: int; draws: int; losses: int
     as_x: tuple[int, int, int]; as_o: tuple[int, int, int]
-    openings: int; simulations: int; seed: int; date: str
+    openings: int; a_simulations: int; b_simulations: int; seed: int; date: str
     a_sha256: str; b_sha256: str | None
+    @property
+    def key(self) -> tuple[str, str, int, str, str | None]   # (a, b, seed, a_sha256, b_sha256)
     def to_json(self) -> dict[str, Any]
     @staticmethod
     def from_json(row: Mapping[str, Any]) -> BenchmarkRow
 
-def append_rows(path: Path, rows: Sequence[BenchmarkRow]) -> None          # JSON Lines append
+def append_rows(path: Path, rows: Sequence[BenchmarkRow]) -> None
+    # JSON Lines append. A row whose `key` is already in the file is a ValueError naming the
+    # pairing and the seed (same seed, deterministic search: the same games again).
 def read_rows(path: Path) -> list[BenchmarkRow]                           # [] when missing
 def check_pool_hashes(rows: Sequence[BenchmarkRow], references: Sequence[Reference]) -> None
     # ValueError naming the reference whose sha256 in the log differs from the file's.
+def pairings(candidate_sha256: str, references: Sequence[Reference]) -> list[Reference]
+    # The references to play: every one whose sha256 differs from the candidate's (a pool
+    # member benchmarked as a candidate skips itself).
 def as_matches(rows: Sequence[BenchmarkRow]) -> list[tuple[str, str, int, int, int]]
 def rating_table(rows: Sequence[BenchmarkRow], anchor: str = ANCHOR) -> dict[str, float]
-def bootstrap_interval(rows: Sequence[BenchmarkRow], player: str, rng: np.random.Generator,
-                       resamples: int = 200, anchor: str = ANCHOR) -> tuple[float, float]
+def bootstrap_interval(rows: Sequence[BenchmarkRow], player: str, resamples: int = 200,
+                       seed: int = 0, anchor: str = ANCHOR) -> tuple[float, float]
     # Resample each pairing's (wins, draws, losses) as a multinomial draw of its game count
-    # with the observed proportions, refit, return the 2.5th and 97.5th percentiles.
-def write_ratings(path: Path, rows: Sequence[BenchmarkRow], rng) -> dict[str, Any]
-    # {"anchor": ANCHOR, "players": {name: {"elo", "low", "high", "games"}}}, rewritten whole.
+    # with the observed proportions, refit, return the 2.5th and 97.5th percentiles. The
+    # generator is `np.random.default_rng(seed)`: the same log gives the same interval.
+def write_ratings(path: Path, rows: Sequence[BenchmarkRow]) -> dict[str, Any]
+    # {"anchor": ANCHOR, "players": {name: {"elo", "low", "high", "games"}}}, rewritten whole,
+    # values rounded to one decimal. Derived from the log; not committed.
 
 # training/metrics.py
 def summarise(rows: Sequence[Mapping[str, Any]], at: int | None = None) -> dict[str, Any]
@@ -152,14 +172,16 @@ Script flags:
 ```
 scripts/train.py        + --temperature-cutoff N  --c-init F  --c-base F  --dirichlet-alpha F
                           --dirichlet-epsilon F  --eval-simulations N
-scripts/benchmark.py      --model PATH  [--root benchmarks]  [--games 50]  [--seed 0]
-                          [--device cpu]  [--tag NAME  + the search flags above for the candidate]
+scripts/benchmark.py      --model PATH  [--root benchmarks]  [--games S²]  [--seed 0]
+                          [--device cpu]  [--tag NAME  --c-init F  --c-base F]
 scripts/compare_runs.py   RUN_DIR...  [--at N]  [--key NAME]  [--benchmarks benchmarks]
 ```
 
-`benchmark.py` reads the board size from the checkpoint, lists the pool for that size, refuses a missing pool directory with a message that names the manifest, checks the hashes, plays the pairings, appends the rows, rewrites `ratings.json`, and prints: the candidate's name, rating and interval; one line per reference with the score and per-colour W/D/L; the pool's references and their current ratings. Negative or zero `--games`, a `--tag` without any search flag, or search flags without `--tag`, are usage errors (status 2).
+`benchmark.py` reads the board size from the checkpoint, lists the pool for that size, refuses a missing pool directory with a message that names the manifest, checks the hashes, drops the pairing against a reference with the candidate's own hash, refuses a seed already logged for this candidate, plays the pairings, appends the rows, rewrites `ratings.json`, and prints: the candidate's name, rating and interval; one line per reference with the score and per-colour W/D/L; the pool's references and their current ratings. `--games` below 1 or above `S²`, a `--tag` without `--c-init` or `--c-base`, or either of those without `--tag`, are usage errors (status 2).
 
-## Step 1: flags (`tests/training/test_scripts.py`, a new `tests/scripts/test_train_config.py`, then `scripts/train.py`)
+## Step 1: flags (`tests/training/test_scripts.py`, then `scripts/train.py`)
+
+Script tests stay in `tests/training/test_scripts.py`, the one home they have today (`tests/` mirrors `src/`, and scripts have no package). The in-process `build_config` tests load `scripts/train.py` as a module with `importlib.util.spec_from_file_location` (a small helper in that test file); the flag-rejection tests keep the subprocess pattern.
 
 Tests first:
 
@@ -169,25 +191,27 @@ Tests first:
 
 Then implement. `scripts/train.py` imports `SearchConfig` instead of `SELF_PLAY`. Smoke check by hand: `uv run python scripts/train.py --name six-a --size 6 --generations 20 --seed 0 --device cpu` must print "Resuming" and exit at once with the run already at generation 20 (no config mismatch).
 
-## Step 2: the fit over any key (`tests/training/test_evaluate.py`, then `evaluate.py`)
+## Step 2: the fit over any key, and per-side match settings (`tests/training/test_evaluate.py`, then `evaluate.py`)
 
 Tests: `elo_ratings` with string players and `anchor="uniform@100"` gives the same numbers as the int version under a relabelling; the existing int tests pass unchanged (default anchor 0). Implement by typing the key generically and sorting pairs with `sorted((player, opponent))` instead of `min`/`max` (identical for ints).
+
+`play_match` with `b_simulations=4` against `a`'s 1, using two `TableEvaluator`s on 3x3: `b`'s tree has at least 4 simulations when it plays and `a`'s exactly 1 (assert through a recording evaluator or by inspecting `MatchGame.trees`); omitting the keyword arguments reproduces today's results bit for bit (compare a seeded match before and after). Implement in `MatchGame` with per-`Mark` settings.
 
 ## Step 3: the benchmark (`tests/training/test_benchmark.py`, then `training/benchmark.py`, `scripts/benchmark.py`)
 
 Tests, torch-free except the last two:
 
-1. Naming: `uniform_name`, `candidate_name` with and without a tag, `benchmark_dir`.
-2. `list_pool` on a temporary directory with two fake `.pt` files (any bytes) and one stray file: the two uniform references first, then the two checkpoints sorted, with correct hashes; the stray file is ignored.
-3. `BenchmarkRow` JSON round trip; `append_rows` then `read_rows` returns the same rows; `read_rows` on a missing file is `[]`.
-4. `check_pool_hashes`: a log row whose `b_sha256` differs from the pool's file raises naming the reference; `None` hashes (uniform) are never compared.
+1. Naming: `uniform_name`; `candidate_name` for `runs/six-a/gen_020.pt` with and without a tag, and for a pool path (gives the pool name); `pool_name` for `six-a-gen_005.pt` and for a run name that itself contains `-gen_`; a stem without `-gen_NNN` raises; `benchmark_dir`.
+2. `list_pool` on a temporary directory with two fake `.pt` files (any bytes) and one stray file: the two uniform references first, then the two checkpoints sorted, named by `pool_name`, with correct hashes; the stray file is ignored.
+3. `BenchmarkRow` JSON round trip; `append_rows` then `read_rows` returns the same rows; `read_rows` on a missing file is `[]`; appending a row whose `key` is already in the file raises naming the pairing and seed, and a row with another seed is accepted.
+4. `check_pool_hashes`: a log row whose `b_sha256` differs from the pool's file raises naming the reference; `None` hashes (uniform) are never compared. `pairings` drops the reference whose hash equals the candidate's and keeps the rest in order.
 5. `rating_table` on hand-built rows: the anchor is 0; a candidate that beats `uniform@100` 75–25 and loses to `uniform@400` 25–75 lands between them; the result is invariant to the row order.
-6. `bootstrap_interval`: contains the point estimate; narrows when every row's game count is multiplied by 4 (compare widths); a fixed `rng` makes it deterministic.
-7. `write_ratings` writes every player with `elo`, `low`, `high`, `games`, and the anchor's `elo` is exactly 0.
+6. `bootstrap_interval`: contains the point estimate; narrows when every row's game count is multiplied by 4 (compare widths); two calls on the same rows give the same interval.
+7. `write_ratings` writes every player with `elo`, `low`, `high`, `games`, and the anchor's `elo` is exactly 0; writing twice gives identical bytes.
 8. `load_pool` (torch): a 3x3 checkpoint written with `save_checkpoint` loads into a `NetworkEvaluator`; a 4x4 checkpoint in a 3x3 pool raises naming the file; uniform names give `UniformEvaluator`.
-9. End to end in `test_scripts.py` (torch, a few seconds): a 3x3 pool with one tiny checkpoint, `scripts/benchmark.py --model <another tiny 3x3 checkpoint> --games 1 --root <tmp>` exits 0, appends rows for every reference, writes `ratings.json` with the candidate present; a second invocation with the same flags appends again (the log is append-only; the fit uses both). Flag errors: `--games 0`, `--tag` without a search flag, a search flag without `--tag`, a missing pool directory (status 2, message names `benchmarks/README.md`).
+9. End to end in `test_scripts.py` (torch, a few seconds): a 3x3 pool with one tiny checkpoint, `scripts/benchmark.py --model <another tiny 3x3 checkpoint> --games 1 --root <tmp>` exits 0, appends one row per reference, writes `ratings.json` with the candidate present; the same invocation again exits 2 with the duplicate-seed message and the log is unchanged; `--seed 1` appends again; `--model <the pool checkpoint itself>` plays only the uniform references. Flag errors: `--games 0`, `--games 10` on 3x3, `--tag` without `--c-init`/`--c-base`, `--c-init` without `--tag`, a missing pool directory (status 2, message names `benchmarks/README.md`).
 
-Then implement the module, then the script. The script's search flags reuse one helper shared with `train.py` (`add_search_flags(parser)` / `search_from_args(args, root_noise)` in a new `scripts/_flags.py`, or duplicated if a shared module between scripts proves awkward; the implementer decides and says which).
+Then implement the module, then the script. The two scripts share the `c_init`/`c_base` flag definitions through a small `scripts/_flags.py` (`add_puct_flags(parser)`), or duplicate them if importing between scripts proves awkward; the implementer decides and says which.
 
 **Review point:** `/code-review` (medium).
 
@@ -205,7 +229,7 @@ Tests: `summarise` on three hand-built rows picks the last by default, honours `
 
 Compute, in this order, each result recorded in experiment 01 as it lands. Times are estimates from `six-a` (26 minutes for 20 generations on CPU; the tournament is about 50 seconds per generation from generation 8 on) and the expected 2.5× per-generation cost of 8x8.
 
-1. **Seed the 6x6 pool.** Copy `runs/six-a/gen_005.pt`, `gen_010.pt`, `gen_020.pt` to `benchmarks/6x6/pool/six-a-gen_005.pt` etc.; write their origin in `benchmarks/README.md`. Benchmark each (`scripts/benchmark.py --model`), which rates the pool against itself and the uniform players. About 15 minutes.
+1. **Seed the 6x6 pool.** Copy `runs/six-a/gen_005.pt`, `gen_010.pt`, `gen_020.pt` to `benchmarks/6x6/pool/six-a-gen_005.pt` etc.; write their origin in `benchmarks/README.md`. Benchmark each pool file as a candidate (`scripts/benchmark.py --model benchmarks/6x6/pool/six-a-gen_005.pt`, and so on): each skips itself and plays the other two checkpoints and the two uniform players, so afterwards every pool member has a rating on the shared scale. About 15 minutes.
 2. **Benchmark repeatability.** Benchmark `six-a/gen_020` again with `--seed 1`. The difference between the two ratings, against the printed intervals, is the measurement noise. About 5 minutes.
 3. **6x6 headroom.** `scripts/train.py --name six-a --size 6 --generations 40 --seed 0 --device cpu` (resume). Benchmark `gen_030` and `gen_040`. About 40 minutes. Criterion (a) needs the seed spread from item 5, so the verdict waits.
 4. **8x8 baseline.** One-generation `cpu` and `mps` probes (`--generations 1`, two names), then `scripts/train.py --name eight-a --size 8 --generations 30 --seed 0 --device <faster>`. Record the per-generation wall time and the throughput rows for [engineering.md](../design/engineering.md#measured-2026-10-10-self-play-throughput). About 1.5 hours, possibly more. Seed the 8x8 pool from `eight-a` generations 5, 15 and 30 (adjust if the curve says so, and say why) and benchmark them.
@@ -217,15 +241,16 @@ If any run shows a draw rate above about 20% or any other threshold named in the
 
 ## Step 7: documentation
 
-- `scripts/README.md`: sections for `benchmark.py` and `compare_runs.py`; `train.py` lists the new flags; `evaluate.py` says when to use it (one ad-hoc pairing) and when the benchmark (a rating).
-- `benchmarks/README.md`: the manifest format, the frozen pools, how to add a reference (never replace), the GitHub-release note for sharing pool checkpoints.
+- `scripts/README.md`: sections for `benchmark.py` and `compare_runs.py`; `train.py` lists the new flags; `evaluate.py` says when to use it (one ad-hoc pairing) and when the benchmark (a rating); the `experiments/` section opens with one sentence saying these measure the game and that training experiments are recorded in `docs/experiments/`.
+- `benchmarks/README.md`: the manifest format, the frozen pools, how to add a reference (never replace), that `matches.jsonl` is committed and `ratings.json` derived, the GitHub-release note for sharing pool checkpoints.
 - `docs/experiments/README.md` and `01-testbed-and-noise-floor.md`: complete.
 - `docs/design/training.md`, "Evaluation": a third item, the cross-run benchmark (shared scale per size, anchor, pool, interval), with "monitoring" versus "verdict" made explicit; link the experiments directory.
 - `docs/design/engineering.md`: module layout gains `training/benchmark.py`, `scripts/benchmark.py`, `scripts/compare_runs.py`, `benchmarks/`; "Measured" gains the 8x8 throughput row and the 8x8 per-generation cost; "Configuration" notes that the search constants are flags now.
 - `docs/design/open-questions.md`: the 6x6 results section gains a pointer to experiment 01; the "Experiments to run" table gains a column or note "runs as experiment NN" and the temperature-cutoff row becomes experiment 02 (to be written after merge); the testbed decision is recorded under Decisions with its date.
 - `docs/design/upgrades.md`: the preamble says the verdict is the benchmark rating on the shared scale, linking training.md and the experiments directory.
 - `docs/design/README.md` Files table and the root `README.md` Documentation list: add `docs/experiments/`. `docs/architecture.md`: `scripts/` sentence names the two new scripts; the documentation paragraph names the experiments log.
-- `.gitignore`: `benchmarks/*/pool/` (belt and braces next to `*.pt`).
+- `.gitignore`: `benchmarks/*/pool/` (belt and braces next to `*.pt`) and `benchmarks/*/ratings.json` (derived).
+- `docs/experiments/README.md` opens by distinguishing itself from `scripts/experiments/`.
 - The memory note for Claude sessions ("design vs plans") would gain the third kind; that is Vláďa's to approve separately, not part of this branch.
 
 ## Definition of done
