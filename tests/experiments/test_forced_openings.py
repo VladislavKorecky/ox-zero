@@ -138,9 +138,8 @@ def test_opening_map_is_symmetric_and_marks_the_second_ring(fo):
 
 @pytest.mark.parametrize("cell", [(1, 1), (1, 2), (1, 3)])
 def test_witness_line_replays_to_an_o_win(fo, cell):
-    """`witness` returns one line of the proof (the defender's first losing
-    reply wherever it has a choice); replayed from the opening it ends with
-    the attacker completing a line."""
+    """`witness` returns a principal line of the proof; replayed from the
+    opening it ends with the attacker completing a line."""
     start = apply_move(initial_state(8), cell)
     line = fo.witness(start, 4)
     state = start
@@ -151,3 +150,16 @@ def test_witness_line_replays_to_an_o_win(fo, cell):
 
 def test_witness_is_none_without_a_forced_win(fo):
     assert fo.witness(apply_move(initial_state(8), (0, 0)), 3) is None
+
+
+@pytest.mark.parametrize("cell", [(1, 1), (1, 2), (1, 3)])
+def test_witness_is_the_longest_defence_against_the_fastest_attack(fo, cell):
+    """The witness is a principal line: the attacker always picks a move that
+    wins in the fewest moves, the defender a reply that holds out longest. So
+    its number of attacker moves is the position's exact distance to a forced
+    win, the smallest `k` for which `forces_win` holds."""
+    start = apply_move(initial_state(8), cell)
+    distance = next(k for k in range(1, 5) if fo.forces_win(start, k))
+    line = fo.witness(start, 4)
+    attacker_moves = len(line[0::2])  # attacker, defender, attacker, ...
+    assert attacker_moves == distance

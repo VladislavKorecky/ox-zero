@@ -167,31 +167,43 @@ def _defender_lost(state: State, moves: int, radius: int | None) -> bool:
     return result
 
 
-def witness(state: State, moves: int, radius: int | None = 2) -> list[Cell] | None:
-    """One line of a winning strategy, ending in the attacker's winning move.
+def distance(state: State, moves: int, radius: int | None = 2) -> int | None:
+    """The fewest own moves in which the side to move forces a win (at most
+    `moves`), or None if it cannot within `moves`."""
+    return next((k for k in range(1, moves + 1) if forces_win(state, k, radius)), None)
 
-    Where the defender has a choice, the line follows its first reply in board
-    order (every reply loses; this shows one). None if there is no forced win.
+
+def witness(state: State, moves: int, radius: int | None = 2) -> list[Cell] | None:
+    """A principal line of the winning strategy, ending in the winning move.
+
+    Minimax over distance to the win: the attacker always plays a move that
+    wins in the fewest moves, and the defender, where it has a choice, the
+    reply that holds out longest (ties go to the first in board order). Every
+    other reply loses too; this line is the most resistant one, so it is the
+    one worth reading. None if there is no forced win within `moves`.
     """
-    if not forces_win(state, moves, radius):
+    k = distance(state, moves, radius)
+    if k is None:
         return None
     line: list[Cell] = []
     while True:
         wins = winning_cells(state)
         if wins:
             return line + [wins[0]]
-        move = next(
-            m for m in _near(state, radius) if _defender_lost(apply_move(state, m), moves - 1, radius)
-        )
+        # An attacker move that keeps the win within k: after it, the defender
+        # is lost with k - 1 attacker moves to come. `distance` makes k minimal,
+        # so this is a fastest move.
+        move = next(m for m in _near(state, radius) if _defender_lost(apply_move(state, m), k - 1, radius))
         state = apply_move(state, move)
         replies = _defender_replies(state)
-        if replies is None:  # double threat: show one block, then the win
-            reply = winning_cells(_pass(state))[0]
-        else:
-            reply = replies[0]
+        if replies is None:  # double threat: block one, the other wins
+            replies = winning_cells(_pass(state))[:1]
+        # The defender's most resistant reply: the one after which the attacker
+        # needs the most moves (at most k - 1, since every reply loses).
+        reply = max(replies, key=lambda r: distance(apply_move(state, r), k - 1, radius) or 0)
         line += [move, reply]
         state = apply_move(state, reply)
-        moves -= 1
+        k = distance(state, k - 1, radius)
 
 
 # --- symmetry ----------------------------------------------------------------------
