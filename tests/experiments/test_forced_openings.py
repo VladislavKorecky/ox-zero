@@ -163,3 +163,22 @@ def test_witness_is_the_longest_defence_against_the_fastest_attack(fo, cell):
     line = fo.witness(start, 4)
     attacker_moves = len(line[0::2])  # attacker, defender, attacker, ...
     assert attacker_moves == distance
+
+
+# --- the attacker under threat ---------------------------------------------------
+
+
+def test_attacker_facing_a_double_threat_cannot_force_a_win(fo):
+    # O to move, no immediate win, and X threatens 2,2 and 3,4 at once: O
+    # blocks one, X takes the other, at every horizon.
+    state = play([(0, 2), (1, 2), (5, 4), (4, 4), (4, 1)], 6)
+    assert fo.winning_cells(state) == []
+    for moves in (1, 2, 3):
+        assert not fo.forces_win(state, moves)
+
+
+def test_clear_caches_empties_the_memo(fo):
+    fo.forces_win(apply_move(initial_state(8), (1, 1)), 3)
+    assert fo.cache_size() > 0
+    fo.clear_caches()
+    assert fo.cache_size() == 0

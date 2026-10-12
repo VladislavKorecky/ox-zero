@@ -53,31 +53,43 @@ deterministic; wall-clock times go to a separate `*.timing.json`.
 
 Usage:
     uv run python scripts/experiments/forced_openings.py                 # 8x8 and 12x12, 4 O moves
-    uv run python scripts/experiments/forced_openings.py --sizes 8 --moves 5
+    uv run python scripts/experiments/forced_openings.py --sizes 8 --moves 5 \
+        --out scripts/experiments/results/forced_openings.8x8-moves5.json
 """
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import time
 from pathlib import Path
 
-from ox_zero.game import apply_move, initial_state
+from ox_zero.engine.encoding import NUM_SYMMETRIES, transform_cell
+from ox_zero.game import apply_move, initial_state, legal_moves
 from ox_zero.game.rules import State
 
 Cell = tuple[int, int]
 
 DEFAULT_OUT = Path(__file__).parent / "results" / "forced_openings.json"
 
-# Cache shared by every search in the process: (state, moves, radius) -> bool.
-# `State` is a frozen dataclass, so it hashes by value.
+# Caches shared by every search in the process. `State` is a frozen dataclass,
+# so it hashes by value. `main` clears them between board sizes.
 _ATTACKER: dict[tuple[State, int, int | None], bool] = {}
 _DEFENDER: dict[tuple[State, int, int | None], bool] = {}
+_WINS: dict[State, list[Cell]] = {}
 
 
-def _empty_cells(state: State) -> list[Cell]:
-    return [divmod(i, state.size) for i, v in enumerate(state.board) if v is None]
+def clear_caches() -> None:
+    """Forget every memoised result (they are only valid per position anyway)."""
+    _ATTACKER.clear()
+    _DEFENDER.clear()
+    _WINS.clear()
+
+
+def cache_size() -> int:
+    """Entries across all caches."""
+    return len(_ATTACKER) + len(_DEFENDER) + len(_WINS)
 
 
 def _near(state: State, radius: int | None) -> list[Cell]:
@@ -87,7 +99,7 @@ def _near(state: State, radius: int | None) -> list[Cell]:
     to be near, so every cell is returned.
     """
     if radius is None or state.move_count == 0:
-        return _empty_cells(state)
+        return legal_moves(state)
     n = state.size
     found: set[Cell] = set()
     for i, mark in enumerate(state.board):
@@ -109,12 +121,14 @@ def winning_cells(state: State) -> list[Cell]:
     """
     if state.winner is not None:
         return []
-    return [m for m in _near(state, 2) if apply_move(state, m).winner is not None]
+    if state not in _WINS:
+        _WINS[state] = [m for m in _near(state, 2) if apply_move(state, m).winner is not None]
+    return _WINS[state]
 
 
 def _pass(state: State) -> State:
     """The same board with the other side to move: "what would they win at?"."""
-    return State(state.size, state.board, state.to_move.opponent, state.move_count)
+    return dataclasses.replace(state, to_move=state.to_move.opponent)
 
 
 def forces_win(state: State, moves: int, radius: int | None = 2) -> bool:
@@ -127,9 +141,20 @@ def forces_win(state: State, moves: int, radius: int | None = 2) -> bool:
     elif moves <= 1:
         result = False
     else:
-        result = any(
-            _defender_lost(apply_move(state, m), moves - 1, radius) for m in _near(state, radius)
-        )
+        # The same forcing rule as for the defender: if the opponent already
+        # threatens a win, the attacker must block it (one threat) or is lost
+        # (two or more), so only the block is worth trying.
+        candidates = _defender_replies(state)
+        if candidates is None:
+            result = False
+        else:
+            near = set(_near(state, radius))
+            forced = len(winning_cells(_pass(state))) == 1
+            result = any(
+                _defender_lost(apply_move(state, m), moves - 1, radius)
+                for m in candidates
+                if forced or m in near
+            )
     _ATTACKER[key] = result
     return result
 
@@ -145,7 +170,7 @@ def _defender_replies(state: State) -> list[Cell] | None:
         return None  # a double threat: one move cannot block both
     if threats:
         return threats  # the one forced block
-    return _empty_cells(state)
+    return legal_moves(state)
 
 
 def _defender_lost(state: State, moves: int, radius: int | None) -> bool:
@@ -193,7 +218,9 @@ def witness(state: State, moves: int, radius: int | None = 2) -> list[Cell] | No
         # An attacker move that keeps the win within k: after it, the defender
         # is lost with k - 1 attacker moves to come. `distance` makes k minimal,
         # so this is a fastest move.
-        move = next(m for m in _near(state, radius) if _defender_lost(apply_move(state, m), k - 1, radius))
+        move = next(
+            m for m in legal_moves(state) if _defender_lost(apply_move(state, m), k - 1, radius)
+        )
         state = apply_move(state, move)
         replies = _defender_replies(state)
         if replies is None:  # double threat: block one, the other wins
@@ -210,17 +237,10 @@ def witness(state: State, moves: int, radius: int | None = 2) -> list[Cell] | No
 
 
 def symmetric_images(cell: Cell, size: int) -> set[Cell]:
-    """The cell's images under the board's eight symmetries (the dihedral group D4).
-
-    Transposing (r, c) -> (c, r) and mirroring rows and columns generate all
-    eight: the identity, three rotations, and four reflections.
-    """
-    r, c = cell
-    m = size - 1
-    out = set()
-    for a, b in ((r, c), (c, r)):
-        out |= {(a, b), (m - a, b), (a, m - b), (m - a, m - b)}
-    return out
+    """The cell's images under the board's eight symmetries (the dihedral group
+    D4: the identity, three rotations, four reflections), from the same
+    `transform_cell` the network's augmentation uses."""
+    return {transform_cell(cell, k, size) for k in range(NUM_SYMMETRIES)}
 
 
 def representatives(size: int) -> list[Cell]:
@@ -259,6 +279,7 @@ def main() -> None:
 
     results, timings = [], []
     for size in args.sizes:
+        clear_caches()  # positions of one size never recur in another
         start = time.perf_counter()
         grid = opening_map(size, args.moves)
         seconds = round(time.perf_counter() - start, 1)
