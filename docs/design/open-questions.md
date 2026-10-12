@@ -185,7 +185,7 @@ Reasoning written down after the run so it is not lost. A hypothesis, not a resu
 
 ## Results (2026-10-12): forced openings
 
-Prompted by Vláďa's observation from his own games that X's first move at 1,1 (and its mirrors) is a guaranteed loss, because O can attack from the edge, where X cannot use O's marks. Measured with `scripts/experiments/forced_openings.py` (bounded AND/OR search: O tries every move within distance 2 of a mark, X every reply, with forced blocks and double threats; it agrees with the exact solver on every 3x3 and 4x4 opening). Output in `scripts/experiments/results/forced_openings.json`.
+Prompted by Vláďa's observation from his own games that X's first move at 1,1 (and its mirrors) is a guaranteed loss, because O can attack from the edge, where X cannot use O's marks. Measured with `scripts/experiments/forced_openings.py` (bounded AND/OR search: O tries every move within distance 2 of a mark, X every reply, with forced blocks and double threats; in this configuration and with every cell a candidate it agrees with the exact solver on every 3x3 and 4x4 opening). Output in `scripts/experiments/results/forced_openings.json`.
 
 **The whole second ring loses.** Every cell one step in from the edge is a forced loss for X within 4 O moves, on both boards (`L`, 8x8 shown; 12x12 has the same ring, 36 cells):
 

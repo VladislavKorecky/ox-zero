@@ -182,3 +182,27 @@ def test_clear_caches_empties_the_memo(fo):
     assert fo.cache_size() > 0
     fo.clear_caches()
     assert fo.cache_size() == 0
+
+
+@pytest.mark.parametrize("size", [3, 4])
+def test_radius_two_agrees_with_the_exact_solver_on_every_opening(fo, size):
+    """The published configuration (attacker within distance 2 of a mark,
+    defender everywhere) agrees with the solver on small boards too."""
+    solver = Solver()
+    horizon = (size * size) // 2 + 1
+    for row in range(size):
+        for col in range(size):
+            state = apply_move(initial_state(size), (row, col))
+            assert fo.forces_win(state, horizon, radius=2) == (solver.value(state) == 1), (row, col)
+
+
+def test_witness_moves_stay_within_the_search_radius(fo):
+    """Every attacker move of a witness is one the search itself considered:
+    within distance 2 of a mark already on the board."""
+    start = apply_move(initial_state(12), (1, 4))
+    state = start
+    for i, move in enumerate(fo.witness(start, 4)):
+        if i % 2 == 0:  # attacker moves
+            marks = [divmod(j, 12) for j, v in enumerate(state.board) if v is not None]
+            assert min(max(abs(move[0] - a), abs(move[1] - b)) for a, b in marks) <= 2
+        state = apply_move(state, move)

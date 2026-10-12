@@ -16,8 +16,8 @@ splits 1-1 whenever both players find the win, so its pairs are informative
 only when someone misses it.
 
 Opening classes, by distance to the nearest edge: `corner` and `edge` (on the
-edge), `ring2` (one step in: the cells `forced_openings.py` proves lost),
-`interior` (everything else).
+edge), `ring2` (one step in; `forced_openings.py` proves these lost for X on
+8x8 and 12x12, other sizes are unchecked), `interior` (everything else).
 
 Method: every pairing of the given checkpoints (same board size), every cell
 as the opening with both colours, the deterministic evaluation search of the
@@ -140,6 +140,8 @@ def main() -> None:
     args = parser.parse_args()
     if len(args.checkpoints) < 2:
         parser.error("need at least two checkpoints")
+    if len({p.resolve() for p in args.checkpoints}) != len(args.checkpoints):
+        parser.error("a checkpoint is given twice")
 
     parameters = {
         "checkpoints": [str(p) for p in args.checkpoints],

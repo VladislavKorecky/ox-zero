@@ -75,3 +75,13 @@ def test_tabulate_rates_per_class(oo):
     assert table["edge"] == {"pairs": 2, "x_win_rate": 0.25, "informative": 0.5, "o_both": 0.5, "x_both": 0.0}
     assert table["ring2"]["x_both"] == 1.0 and table["ring2"]["x_win_rate"] == 1.0
     assert table["all"]["pairs"] == 3
+
+
+def test_duplicate_checkpoints_are_refused(oo, tmp_path):
+    import subprocess
+    path = tmp_path / "x.pt"
+    path.write_bytes(b"")
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPT), str(path), str(path)], capture_output=True, text=True
+    )
+    assert proc.returncode != 0 and "twice" in proc.stderr

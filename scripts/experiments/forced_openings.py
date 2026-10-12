@@ -37,8 +37,8 @@ The attacker's moves are limited to cells within `radius` (2 by default) of
 an existing mark. A line of three spans two steps, so a farther move cannot
 form a line with any existing mark; it could still be a slow setup move, which
 is why a `False` under the radius is not a proof of safety. `radius=None`
-tries every cell (exact within the horizon; used by the tests on 3x3 and 4x4,
-where it agrees with the solver on every opening).
+tries every cell (exact within the horizon). On 3x3 and 4x4 both settings
+agree with the exact solver on every opening (the tests).
 
 Memoisation: positions repeat across move orders (transpositions), so results
 are cached per (position, moves left, radius).
@@ -53,7 +53,7 @@ deterministic; wall-clock times go to a separate `*.timing.json`.
 
 Usage:
     uv run python scripts/experiments/forced_openings.py                 # 8x8 and 12x12, 4 O moves
-    uv run python scripts/experiments/forced_openings.py --sizes 8 --moves 5 \
+    uv run python scripts/experiments/forced_openings.py --sizes 8 --moves 5 \\
         --out scripts/experiments/results/forced_openings.8x8-moves5.json
 """
 
@@ -141,22 +141,27 @@ def forces_win(state: State, moves: int, radius: int | None = 2) -> bool:
     elif moves <= 1:
         result = False
     else:
-        # The same forcing rule as for the defender: if the opponent already
-        # threatens a win, the attacker must block it (one threat) or is lost
-        # (two or more), so only the block is worth trying.
-        candidates = _defender_replies(state)
-        if candidates is None:
-            result = False
-        else:
-            near = set(_near(state, radius))
-            forced = len(winning_cells(_pass(state))) == 1
-            result = any(
-                _defender_lost(apply_move(state, m), moves - 1, radius)
-                for m in candidates
-                if forced or m in near
-            )
+        candidates = _attacker_moves(state, radius)
+        result = candidates is not None and any(
+            _defender_lost(apply_move(state, m), moves - 1, radius) for m in candidates
+        )
     _ATTACKER[key] = result
     return result
+
+
+def _attacker_moves(state: State, radius: int | None) -> list[Cell] | None:
+    """The attacker's candidate moves, or None if it is already lost.
+
+    The same forcing rule as for the defender: if the opponent already
+    threatens a win, the attacker must block it (one threat) or is lost (two
+    or more). Otherwise every cell within `radius` of a mark.
+    """
+    threats = winning_cells(_pass(state))
+    if len(threats) >= 2:
+        return None
+    if threats:
+        return threats
+    return _near(state, radius)
 
 
 def _defender_replies(state: State) -> list[Cell] | None:
@@ -219,7 +224,9 @@ def witness(state: State, moves: int, radius: int | None = 2) -> list[Cell] | No
         # is lost with k - 1 attacker moves to come. `distance` makes k minimal,
         # so this is a fastest move.
         move = next(
-            m for m in legal_moves(state) if _defender_lost(apply_move(state, m), k - 1, radius)
+            m
+            for m in _attacker_moves(state, radius)
+            if _defender_lost(apply_move(state, m), k - 1, radius)
         )
         state = apply_move(state, move)
         replies = _defender_replies(state)
@@ -282,13 +289,13 @@ def main() -> None:
         clear_caches()  # positions of one size never recur in another
         start = time.perf_counter()
         grid = opening_map(size, args.moves)
-        seconds = round(time.perf_counter() - start, 1)
         lost = sorted(cell for cell, value in grid.items() if value)
         lines = {
             _format(rep): [_format(m) for m in witness(apply_move(initial_state(size), rep), args.moves)]
             for rep in representatives(size)
             if grid[rep]
         }
+        seconds = round(time.perf_counter() - start, 1)  # the map and the witnesses
         results.append({"size": size, "lost": [_format(c) for c in lost], "witness": lines})
         timings.append({"size": size, "seconds": seconds})
 
