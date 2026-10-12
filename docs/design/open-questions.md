@@ -200,11 +200,11 @@ Prompted by Vláďa's observation from his own games that X's first move at 1,1 
 . . . . . . . .
 ```
 
-Corners, edges and the interior have no forced loss within 5 O moves on 8x8 (`results/forced_openings.8x8-moves5.json`) and within 4 on 12x12. That rules out short wins only, not long ones.
+For corners, edges and the interior the search found no forced loss within 5 O moves on 8x8 (`results/forced_openings.8x8-moves5.json`) and within 4 on 12x12, among O moves within distance 2 of a mark. Not a proof of safety: a longer win, or one that starts with a far-off setup move, is not searched.
 
-Principal lines (O's fastest win against X's longest defence; X's replies in each are forced unless marked):
+Principal lines (O's fastest win against X's longest defence; X's replies are forced blocks unless marked):
 
-- **1,1** (3 O moves): O 0,1, X 2,1; O 1,0, X 1,2; O 2,3 completes 0,1 → 1,2 → 2,3 (`OXO`).
+- **1,1** (3 O moves): O 0,1, X 2,1; O 1,0 (double threat: 1,2 and 3,2), X 1,2; O 2,3 completes 0,1 → 1,2 → 2,3 (`OXO`).
 - **1,2** (3 O moves): O 0,3, X 2,1; O 1,0, X 3,2; O 2,2 completes 1,2 → 2,2 → 3,2 (`XOX`, O in the middle).
 - **1,3** (4 O moves): O 0,2, X 2,4; O 3,2 (quiet: no threat, X free, every one of X's replies loses), X 0,0; O 0,3, X 2,3; O 1,4 completes 3,2 → 2,3 → 1,4 (`OXO`). Further along the ring (1,4 and 1,5 on 12x12) the same pattern shifted.
 

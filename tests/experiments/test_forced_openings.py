@@ -206,3 +206,11 @@ def test_witness_moves_stay_within_the_search_radius(fo):
             marks = [divmod(j, 12) for j, v in enumerate(state.board) if v is not None]
             assert min(max(abs(move[0] - a), abs(move[1] - b)) for a, b in marks) <= 2
         state = apply_move(state, move)
+
+
+def test_radius_flag_is_recorded(fo, tmp_path):
+    import json, subprocess
+    out = tmp_path / "r.json"
+    subprocess.run([sys.executable, str(SCRIPT), "--sizes", "4", "--moves", "2", "--radius", "3", "--out", str(out)],
+                   check=True, capture_output=True)
+    assert json.loads(out.read_text())["parameters"]["radius"] == 3

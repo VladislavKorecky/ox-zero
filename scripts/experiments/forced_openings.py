@@ -41,7 +41,9 @@ tries every cell (exact within the horizon). On 3x3 and 4x4 both settings
 agree with the exact solver on every opening (the tests).
 
 Memoisation: positions repeat across move orders (transpositions), so results
-are cached per (position, moves left, radius).
+are cached per (position, moves left, radius). The caches are unbounded and
+cleared only between board sizes: 8x8 at 5 moves fits easily, 12x12 at 5
+moves may not fit in 8 GB.
 
 Symmetry: the board has eight symmetries (four rotations, each optionally
 mirrored), and an opening's value is the same for all its images, so only one
@@ -234,7 +236,9 @@ def witness(state: State, moves: int, radius: int | None = 2) -> list[Cell] | No
             replies = winning_cells(_pass(state))[:1]
         # The defender's most resistant reply: the one after which the attacker
         # needs the most moves (at most k - 1, since every reply loses).
-        reply = max(replies, key=lambda r: distance(apply_move(state, r), k - 1, radius) or 0)
+        lasts = {r: distance(apply_move(state, r), k - 1, radius) for r in replies}
+        assert None not in lasts.values(), "a defender reply escapes: the search is inconsistent"
+        reply = max(replies, key=lasts.__getitem__)
         line += [move, reply]
         state = apply_move(state, reply)
         k = distance(state, k - 1, radius)
@@ -278,20 +282,24 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--sizes", type=int, nargs="+", default=[8, 12])
     parser.add_argument("--moves", type=int, default=4, help="O's moves to win within")
+    parser.add_argument(
+        "--radius", type=int, default=2, help="attacker moves within this distance of a mark; 0 = every cell"
+    )
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args()
+    radius = args.radius or None
 
-    parameters = {"sizes": args.sizes, "moves": args.moves, "radius": 2}
+    parameters = {"sizes": args.sizes, "moves": args.moves, "radius": args.radius}
     print(f"Parameters: {json.dumps(parameters)}\n")
 
     results, timings = [], []
     for size in args.sizes:
         clear_caches()  # positions of one size never recur in another
         start = time.perf_counter()
-        grid = opening_map(size, args.moves)
+        grid = opening_map(size, args.moves, radius)
         lost = sorted(cell for cell, value in grid.items() if value)
         lines = {
-            _format(rep): [_format(m) for m in witness(apply_move(initial_state(size), rep), args.moves)]
+            _format(rep): [_format(m) for m in witness(apply_move(initial_state(size), rep), args.moves, radius)]
             for rep in representatives(size)
             if grid[rep]
         }
