@@ -41,5 +41,6 @@ uv run python scripts/compare_runs.py runs/<arm>-s*
 | # | Experiment | Verdict | Date |
 |---|---|---|---|
 | [01](01-testbed-and-noise-floor.md) | Testbed and noise floor | pending (compute not yet run) | 2026-10-11 |
+| [02](02-benchmark-openings.md) | How informative is each benchmark opening | Edges and corners most informative; trimming openings cannot shrink the interval | 2026-10-12 |
 
 The benchmark's reference pools are recorded in [pools.md](pools.md).

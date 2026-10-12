@@ -200,7 +200,7 @@ Prompted by Vláďa's observation from his own games that X's first move at 1,1 
 . . . . . . . .
 ```
 
-Corners, edges and the interior have no forced loss within 5 O moves on 8x8 (4 on 12x12). That rules out short wins only, not long ones.
+Corners, edges and the interior have no forced loss within 5 O moves on 8x8 (`results/forced_openings.8x8-moves5.json`) and within 4 on 12x12. That rules out short wins only, not long ones.
 
 Principal lines (O's fastest win against X's longest defence; X's replies in each are forced unless marked):
 
@@ -210,20 +210,7 @@ Principal lines (O's fastest win against X's longest defence; X's replies in eac
 
 **Why.** O attacks from the edge. The line through an edge mark and X's mark points off the board, so X can never extend O's mark into an `X O _` threat of its own, while every forced X block lands where O can use it: either the middle of an O line or one end of an `X _ X` that O fills.
 
-**What the 8x8 networks make of the openings.** All six pairings between the four generation-30 networks of [experiment 01](../experiments/01-testbed-and-noise-floor.md) (`eight-a` to `eight-d`), every opening with both colours (384 opening pairs, evaluation search, 100 simulations; an ad-hoc script over `training.evaluate.play_match` on `mps`, outside the official benchmark log). A pair is *informative* when one player wins both of its games; when each colour wins its game the pair splits 1–1 and says nothing about who is stronger.
-
-| Opening class | Cells | X wins | Informative pairs | O won both | X won both |
-|---|---|---|---|---|---|
-| Corner | 4 | 47.9% | 54.2% | 25.0% | 20.8% |
-| Edge | 24 | 41.3% | 51.4% | 32.6% | 15.3% |
-| Second ring (proven lost) | 20 | 12.9% | 25.8% | 74.2% | 0.0% |
-| Interior | 16 | 19.3% | 32.3% | 64.6% | 3.1% |
-| All | 64 | 27.3% | 38.8% | 53.1% | 7.8% |
-
-- **Edges and corners are balanced openings** (X 41–48%) and the most informative per game. Two of the networks' own evaluation of the empty board agrees (`ox-zero analyze --size 8 --simulations 3200` with `eight-b` and `eight-c`): edge and corner first moves score 0.40–0.56 for X, every interior cell 0.04–0.41.
-- **The interior is bad for X but not proven lost** (X 19%).
-- **The proven losses are not pure noise.** A quarter of second-ring pairs are informative: generation-30 networks miss the forced win often enough (X wins 13% of those games) that these openings measure tactics. Removing them would make the benchmark cheaper per unit of information, not more precise.
-- **For the benchmark's noise** ([experiment 01](../experiments/01-testbed-and-noise-floor.md#8x8)): trimming the opening set cannot shrink the interval, because it removes informative pairs too. Per pairing, all 64 openings give about 25 informative pairs, the 44 without the second ring about 20, the 28 edges and corners about 15. More resolution needs *more* balanced openings (for example two-move openings that start on an edge), not fewer. A design decision for the benchmark, not taken here: changing the opening set changes the scale and needs a new match log.
+**What it means for the benchmark** is measured in [experiment 02](../experiments/02-benchmark-openings.md): how informative each class of opening is when near-strength 8x8 networks play it.
 
 ## Decisions (2026-09-27)
 
