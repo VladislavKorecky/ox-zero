@@ -6,10 +6,12 @@ tests that need scores wait for them with `wait_for`.
 """
 
 import asyncio
+import threading
 
 import pytest
 from textual.widgets import Static
 
+from ox_zero.cli import render
 from ox_zero.cli.sandbox.app import BoardView, SandboxApp
 from ox_zero.cli.sandbox.session import Session
 from ox_zero.cli.placeholder import PlaceholderEngine
@@ -141,3 +143,135 @@ async def test_quit(keys):
         await pilot.press(*keys)
         await pilot.pause()
         assert not app.is_running
+
+
+# --- Hide / show -------------------------------------------------------------
+#
+# Hiding is a display switch: the search must keep running underneath. A
+# restarted search emits its first snapshot at once, so "no restart" cannot be
+# shown by looking at `app.analysis`; instead `spy_on_restarts` counts calls.
+
+
+def spy_on_restarts(app: SandboxApp, monkeypatch) -> list[int]:
+    """Count `_restart_analysis` calls (patch before `run_test()`)."""
+    calls = [0]
+    original = app._restart_analysis
+
+    def counting() -> None:
+        calls[0] += 1
+        original()
+
+    monkeypatch.setattr(app, "_restart_analysis", counting)
+    return calls
+
+
+async def hide_and_wait_for_a_hidden_snapshot(pilot, app: SandboxApp) -> None:
+    """Press ctrl+t, then wait for a snapshot that arrived while hidden."""
+    await wait_for(pilot, lambda: app.analysis is not None)
+    before = app.analysis.simulations
+    await pilot.press("ctrl+t")
+    assert app.session.hidden
+    await wait_for(pilot, lambda: app.analysis.simulations > before)
+
+
+class GatedEngine:
+    """Wraps an engine; `search()` yields nothing until `gate` is set."""
+
+    def __init__(self, inner, gate: threading.Event) -> None:
+        self.inner = inner
+        self.gate = gate
+
+    def search(self, state, max_simulations=None):
+        self.gate.wait(timeout=5)
+        return self.inner.search(state, max_simulations)
+
+
+async def test_hiding_keeps_the_search_running(monkeypatch):
+    app = make_app("5,5")
+    restarts = spy_on_restarts(app, monkeypatch)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await wait_for(pilot, lambda: app.analysis is not None)
+        baseline = restarts[0]
+        await hide_and_wait_for_a_hidden_snapshot(pilot, app)
+        assert restarts[0] == baseline
+
+
+async def test_hiding_blanks_the_display_as_snapshots_keep_arriving():
+    app = make_app("5,5")
+    async with app.run_test(size=(120, 40)) as pilot:
+        await hide_and_wait_for_a_hidden_snapshot(pilot, app)
+        blank = render.board(app.session.state, None, last_move=app.session.last_move)
+        assert text(app, "board") == str(blank)
+        assert "1. 5,5" in text(app, "side")
+        assert "Top 3" not in text(app, "side")
+        assert "Eval" not in text(app, "side")
+
+
+async def test_hidden_status_line_shows_the_count_only_after_a_snapshot():
+    gate = threading.Event()
+    app = SandboxApp(
+        Session.from_tokens([]), GatedEngine(PlaceholderEngine(seed=0, rate=2000), gate), top_n=3
+    )
+    try:
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.press("ctrl+t")
+            assert "hidden…" in text(app, "status")
+            assert "analysing" not in text(app, "status")
+            gate.set()
+            await wait_for(pilot, lambda: app.analysis is not None)
+            assert "hidden: " in text(app, "status")
+            assert "simulations" in text(app, "status")
+            assert "analysing" not in text(app, "status")
+    finally:
+        gate.set()  # never leave the worker thread blocked
+
+
+@pytest.mark.parametrize("how", ["command", "key"])
+async def test_showing_is_instant_and_does_not_restart(how, monkeypatch):
+    app = make_app("5,5")
+    restarts = spy_on_restarts(app, monkeypatch)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await hide_and_wait_for_a_hidden_snapshot(pilot, app)
+        baseline = restarts[0]
+        if how == "command":
+            await type_command(pilot, "show")
+        else:
+            await pilot.press("ctrl+t")
+        assert not app.session.hidden
+        assert restarts[0] == baseline
+        assert "Top 3" in text(app, "side")
+
+
+async def test_hidden_survives_a_move():
+    app = make_app("5,5")
+    async with app.run_test(size=(120, 40)) as pilot:
+        await hide_and_wait_for_a_hidden_snapshot(pilot, app)
+        await type_command(pilot, "6,6")
+        # Right after the move `analysis` is None, so wait for a snapshot of
+        # the new position; only then does the assertion prove anything.
+        await wait_for(
+            pilot, lambda: app.analysis is not None and (6, 6) not in app.analysis.scores
+        )
+        assert "hidden: " in text(app, "status")
+        assert "Top 3" not in text(app, "side")
+
+
+async def test_pause_and_hide_together():
+    app = make_app("5,5")
+    async with app.run_test(size=(120, 40)) as pilot:
+        await hide_and_wait_for_a_hidden_snapshot(pilot, app)
+        await pilot.press("ctrl+p")
+        assert "paused" in text(app, "status")
+        assert app.analysis is None
+        assert "Top 3" not in text(app, "side")
+        await type_command(pilot, "resume")
+        await wait_for(pilot, lambda: app.analysis is not None)
+        assert app.session.hidden
+        assert "hidden: " in text(app, "status")
+
+
+async def test_footer_lists_hide_show():
+    app = make_app()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        assert any(b.description == "Hide/show" for b in app.BINDINGS)
