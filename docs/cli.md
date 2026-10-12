@@ -160,9 +160,9 @@ An interactive screen for studying the game, in the spirit of a chess GUI's anal
 
 The screen shows:
 
-- **Status line** (top). Side to move, mark count, and the engine state: `analysing` with the number of simulations so far, or `paused`.
-- **Board** (left). The same heatmap board as `analyze`, with a score in every empty cell. While analysis is paused, empty cells show `.` instead of a score.
-- **Side panel** (right of the board). Eval bar and top N candidates as in `analyze`, then the move history: the moves played so far, numbered in X-and-O pairs as in chess notation.
+- **Status line** (top). Side to move, mark count, and the engine state: `analysing` with the number of simulations so far, `paused`, or `hidden` (with the simulation count, see `hide`).
+- **Board** (left). The same heatmap board as `analyze`, with a score in every empty cell. While analysis is paused or hidden, empty cells show `.` instead of a score.
+- **Side panel** (right of the board). Eval bar and top N candidates as in `analyze` (left out while analysis is paused or hidden), then the move history: the moves played so far, numbered in X-and-O pairs as in chess notation.
 - **Message line** (below the board). Feedback for the last command: errors, the output of `export`, or nothing.
 - **Prompt** (bottom). Where you type commands, above a footer listing the keyboard shortcuts.
 
@@ -185,7 +185,7 @@ unknown command 'hello' (type help for the list)
 ┌──────────────────────────────────────────────────────────────┐
 │ row,col to play  ·  help for commands                        │
 └──────────────────────────────────────────────────────────────┘
- ^q Quit  ^z Undo  ^y Redo  ^p Pause/resume
+ ^q Quit  ^z Undo  ^y Redo  ^p Pause/resume  ^t Hide/show
 ```
 
 Whenever the position changes (a move is played or undone, a position is loaded, the board is reset), the engine drops its current search and starts on the new position. The screen redraws at once with the new board, and the scores fill in and settle as the search progresses. If the position is decided, the engine stops and the status line shows the result instead, e.g. `Game over: O wins (X O X at 5,5 5,6 5,7)`.
@@ -197,6 +197,7 @@ Commands available inside the sandbox:
 | `row,col` | Play a move for the side to move. |
 | `undo` / `redo` | Step back through the move history, or forward again. Playing a new move discards the redo history. |
 | `pause` / `resume` | Pause or resume continuous analysis. While paused, the board and history still update as you play, but no scores are shown. |
+| `hide` / `show` | Hide or show the analysis. While hidden, the engine keeps searching, but no scores, eval bar or candidates are shown; the status line shows only the simulation count. Use it to play against the engine without seeing its suggestions. |
 | `load <position>` | Jump to a position, given as a move list or board string. |
 | `reset` | Clear to an empty board. |
 | `export` | Show the current position as a board string in the message line, ready to paste into `analyze`. |
@@ -214,4 +215,11 @@ Shortcuts, for when typing a command is slower than pressing a key:
 | Click an empty cell | Play that cell. |
 | `ctrl+z` / `ctrl+y` | `undo` / `redo`. |
 | `ctrl+p` | Toggle `pause` / `resume`. |
+| `ctrl+t` | Toggle `hide` / `show`. |
 | `ctrl+q` | `quit`. |
+
+### Playing against the engine
+
+Type `hide` and play your move. On the engine's turn, `show` (or `ctrl+t`), note its top candidate, hide again, *then* play that move. If you play it while the analysis is shown, the scores for your own turn appear before you can hide them. The longer you wait before revealing, the stronger the engine's move.
+
+Hiding is a display switch only: the search keeps running, so revealing is instant and nothing restarts. It is independent of `pause` (which stops the search). Hidden persists across moves, `undo`, `redo`, `load` and `reset`. If both are set, the status line says `paused`.
