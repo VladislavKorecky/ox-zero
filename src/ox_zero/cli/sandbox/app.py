@@ -14,6 +14,10 @@ finished, starts a new one on the current position. Python threads cannot be
 killed, so cancelling only sets a flag; the worker checks it after every
 snapshot and returns. Snapshots from a stale search that slip through are
 dropped by comparing their position with the current one.
+
+Hiding the analysis (`Session.hidden`) never touches the engine: the search
+keeps running and every snapshot is still stored; only the drawing is
+suppressed. A reveal therefore costs nothing and shows the deep search at once.
 """
 
 from __future__ import annotations
@@ -114,6 +118,7 @@ class SandboxApp(App[None]):
         Binding("ctrl+z", "undo", "Undo", priority=True),
         Binding("ctrl+y", "redo", "Redo", priority=True),
         Binding("ctrl+p", "toggle_pause", "Pause/resume", priority=True),
+        Binding("ctrl+t", "toggle_hidden", "Hide/show", priority=True),
         Binding("ctrl+q", "quit", "Quit", priority=True),
     ]
 
@@ -123,7 +128,8 @@ class SandboxApp(App[None]):
         self.engine = engine
         self.top_n = top_n
         # The latest snapshot for the *current* position, or None while
-        # waiting for the first one, paused, or the game is over.
+        # waiting for the first one, paused, or the game is over. It stays
+        # populated while the analysis is hidden; only the drawing hides it.
         self.analysis: Analysis | None = None
 
     def compose(self) -> ComposeResult:
@@ -167,6 +173,10 @@ class SandboxApp(App[None]):
         self.session.toggle_pause()
         self._apply(Result())
 
+    def action_toggle_hidden(self) -> None:
+        self.session.toggle_hidden()
+        self._apply(Result())
+
     def _apply(self, result: Result) -> None:
         """Update the screen after a command."""
         if result.quit:
@@ -176,6 +186,7 @@ class SandboxApp(App[None]):
         # Pausing, resuming, and position changes all need the engine
         # restarted (or stopped). Restarting when nothing changed would throw
         # away a deep search, so check whether the engine's job changed.
+        # Hide/show don't change the job, so they take the redraw branch.
         if result.position_changed or self._engine_should_run() != self._engine_running:
             self._restart_analysis()
         else:
@@ -187,6 +198,16 @@ class SandboxApp(App[None]):
 
     def _engine_should_run(self) -> bool:
         return not self.session.paused and not is_terminal(self.session.state)
+
+    @property
+    def _shown_analysis(self) -> Analysis | None:
+        """The snapshot to draw: `None` while hidden, so the board and side
+        panel look as they do when paused.
+
+        Hiding is display-only because the search state is the expensive
+        thing: stopping it would make a reveal start from zero simulations.
+        """
+        return None if self.session.hidden else self.analysis
 
     def _restart_analysis(self) -> None:
         self.workers.cancel_group(self, ENGINE_GROUP)
@@ -238,7 +259,7 @@ class SandboxApp(App[None]):
         state = self.session.state
         self.query_one("#status", Static).update(self._status())
         self.query_one("#board", BoardView).update(
-            render.board(state, self.analysis, top_n=self.top_n, last_move=self.session.last_move)
+            render.board(state, self._shown_analysis, top_n=self.top_n, last_move=self.session.last_move)
         )
         self.query_one("#side", Static).update(self._side())
 
@@ -248,6 +269,16 @@ class SandboxApp(App[None]):
             return render.game_over(state)
         if self.session.paused:
             right = Text("paused", style="bold yellow")
+        elif self.session.hidden:
+            # Nothing is shown but the simulation count, which is the one
+            # thing that doesn't give a move away.
+            if self.analysis is None:
+                right = Text("hidden…", style="magenta")
+            else:
+                right = Text.assemble(
+                    ("hidden: ", "bold magenta"),
+                    (f"{self.analysis.simulations:,} simulations", "magenta"),
+                )
         elif self.analysis is None:
             right = Text("analysing…", style="cyan")
         else:
@@ -260,12 +291,13 @@ class SandboxApp(App[None]):
         history = Text()
         history.append("Moves: ", "bold")
         history.append(self.session.history_text() or "—", "" if self.session.history else "dim")
-        if self.analysis is None:
+        analysis = self._shown_analysis
+        if analysis is None:
             return history
         return Text("\n\n").join(
             [
-                render.eval_bar(self.analysis.value, self.session.state.to_move),
-                render.top_list(self.analysis, self.top_n),
+                render.eval_bar(analysis.value, self.session.state.to_move),
+                render.top_list(analysis, self.top_n),
                 history,
             ]
         )
