@@ -47,3 +47,15 @@ The networks' own view of the empty board agrees (`ox-zero analyze --size 8 --si
 ## Design changes
 
 None. Changing the benchmark's opening set changes the scale and needs a new 8x8 match log; that is a decision for Vláďa, recorded here as an option: richer balanced openings (more resolution) or the 44 openings without the second ring (cheaper, slightly less information).
+
+## Follow-ups (TODO)
+
+- **TODO: tactics score for the benchmark.** Keep the proven-lost openings in the Elo benchmark (they matter exactly when a network does *not* know the forced win, or forgets it during training), and also report them separately. Concept, chosen by Vláďa on 2026-10-14 over scoring the pool games: the candidate plays O from each proven-lost opening (20 on 8x8) against a *perfect defender*, an X oracle built from the forced-win search that always plays the longest defence. The tactics score is the share of openings the candidate converts within the proven horizon (4 O moves); a game counts as failed the moment O's move leaves no forced win within the remaining moves. Measures tactics alone, independent of the pool, deterministic and cheap. Reported next to the Elo, never inside it, so the rating scale is unchanged. Needs the search moved from `scripts/experiments/forced_openings.py` into the package. To be planned in its own session.
+- **TODO: are the inner rings lost too?** Vláďa's hypothesis: O might also force a win against interior openings by starting from the corners and pushing X with setup moves. The searches so far limited O to moves within distance 2 of a mark, which excludes exactly those corner setups, so they do not test it. To run overnight (no distance limit; 4 O moves; may take hours):
+
+  ```bash
+  uv run python scripts/experiments/forced_openings.py --sizes 8 --moves 4 --radius 0 \
+      --out scripts/experiments/results/forced_openings.8x8-moves4-radius0.json
+  ```
+
+  The script maps every representative, so the edge and second-ring cells are rechecked too (the ring is already proven; edges are cheap). An exact solver for 5x5 and 6x6 (proof-number search) is the stronger follow-up if this is inconclusive.
