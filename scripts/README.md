@@ -59,7 +59,8 @@ Resume is automatic. Ctrl-C at any moment leaves a valid run (the checkpoint is 
 
 ```bash
 uv run python scripts/train.py --size 6                     # runs/6x6-seed0, 20 generations, --device auto
-uv run python scripts/train.py --name six-a --device mps    # same constants, named run
+uv run python scripts/train.py --name six-a --size 6 --device cpu     # 6x6: cpu is faster
+uv run python scripts/train.py --name eight-a --size 8 --device mps   # 8x8: mps is 2x faster
 tensorboard --logdir runs/six-a/tensorboard
 ```
 

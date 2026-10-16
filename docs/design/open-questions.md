@@ -6,7 +6,11 @@ Decisions that wait on data. The first implementation step, before any engine co
 
 **Status (2026-10-10):** the training pipeline is built ([plan 04](../plans/archive/04-training-pipeline.md#decisions-made-in-this-plan)) and set the training constants provisionally for 6x6; the first 6x6 run is in [Results (2026-10-10)](#results-2026-10-10-the-first-6x6-run). Provisional means "a starting point the run's numbers re-derive", not decided.
 
+**Status (2026-10-12):** the experiment harness is built and calibrated ([experiment 01](../experiments/01-testbed-and-noise-floor.md)): **8x8 is the testbed** for training experiments, and the noise floor between seeds is about 50 Elo ([Decisions (2026-10-12)](#decisions-2026-10-12)).
+
 ## Experiments to run
+
+Training experiments are recorded in [docs/experiments/](../experiments/README.md) since [plan 06](../plans/06-experiment-harness.md): one file per experiment, rated on the shared benchmark scale. The table below is the list to draw from; an experiment gets its number there when it runs.
 
 | Experiment | Method | What it decides |
 |---|---|---|
@@ -127,6 +131,8 @@ The full per-move series is in `scripts/experiments/results/safe_moves.json`. Th
 
 ## Results (2026-10-10): the first 6x6 run
 
+`six-a` was later extended to 40 generations and rated on the shared 6x6 benchmark scale in [experiment 01](../experiments/01-testbed-and-noise-floor.md); its generations 5, 10 and 15 are the 6x6 reference pool.
+
 The project's first training run, kept as the baseline later runs and tuning are measured against. Measured by [plan 04](../plans/archive/04-training-pipeline.md), step 8: `uv run python scripts/train.py --name six-a --size 6 --generations 20 --seed 0 --device cpu`, every other constant at its provisional value (table above). The run was interrupted with Ctrl-C during generation 6 and resumed with the same command; it continued from generation 6 and completed generation 20. About 26 minutes of wall time on the author's 8 GB Apple Silicon laptop. Throughput is in [engineering.md](engineering.md#measured-2026-10-10-self-play-throughput).
 
 "Elo" is the final Bradley-Terry fit over all of the run's matches, generation 0 at 0. "Ladder" is generation `g`'s score against `g − 8`. Mean length is in moves; the rates are over the generation's 128 self-play games.
@@ -196,3 +202,14 @@ Recorded in the files they belong to; summarised here so the trail from number t
 | MCTS-Solver is the first search upgrade to test | Safe-move table above | [upgrades.md](upgrades.md#search) |
 | 5x5 is out of scope for the solver fixture; fixtures use positions with a strict subset of optimal moves | 5x5 grew the cache by about 1 GB per minute and did not finish in 10 minutes; the empty 4x4 has no strict subset | [engineering.md](engineering.md#testing) |
 | Start on 6x6 with 100–200 simulations per move and 4×64; 12x12 after the pipeline works | Unchanged from the guiding principles; the data confirms 12x12 random-strength games touch only a fifth of the board, so nothing about 12x12 is learnable before the small boards are | [README.md](README.md#guiding-principles) |
+
+## Decisions (2026-10-12)
+
+From [experiment 01](../experiments/01-testbed-and-noise-floor.md), the calibration of [plan 06](../plans/06-experiment-harness.md).
+
+| Decision | Data | Where |
+|---|---|---|
+| **8x8 is the testbed** for training experiments; 12x12 still waits on them | 8x8 passes all three criteria: headroom (each measured seed gains 216–311 Elo from generation 15 to 30, against a seed spread of 52), cadence (a 30-generation run in 85 minutes on `mps`), measurability (X wins 26–37% of games between players within 150 Elo). 6x6 passes measurability only as worded: X wins 16–17% within 150 Elo and 7% within 60, so near-strength scores rest on a handful of games | [experiment 01](../experiments/01-testbed-and-noise-floor.md#verdict) |
+| **Noise floor about 50 Elo** between seeds on 8x8 at generation 30; a third seed when two disagree by more than about 60 (protocol rule 2) | Final benchmark ratings of three seeds of the same configuration: +308, +334, +360. The 95% bootstrap intervals (about ±44) are wider than that spread, reported to Vláďa; the pool is unchanged | [experiment 01](../experiments/01-testbed-and-noise-floor.md#8x8), [protocol](../experiments/README.md#protocol) |
+| **The 8x8 reference pool is frozen**: `eight-a` generations 5, 10, 20, plus the uniform search at 100 and 400 simulations | Seeded and benchmarked in the calibration; only ever extended | [pools.md](../experiments/pools.md) |
+| **8x8 training uses `--device mps`** | Twice the self-play rate of `cpu` at 8x8 (5,032 against 2,435 simulations/s); 6x6 stays on `cpu` | [engineering.md](engineering.md#measured-2026-10-11-8x8) |
