@@ -51,6 +51,7 @@ Columns: what the change is, what it is expected to buy, where the idea comes fr
 | **`torch.compile`** / fused inference | Lower per-batch latency. | PyTorch | When the network is the bottleneck |
 | **YAML/TOML experiment files** | Sweeps without editing code. | Tooling | If we start running many configurations |
 | **Sandbox search budget**: stop open-ended analysis at a simulation or memory cap, and show "done" in the status line | Bounded memory. The sandbox searches until the position changes, and the tree only grows: with lazy child states an empty-board search grows by about 175 MB/s with uniform priors (2026-10-09, [PR #16](https://github.com/VladislavKorecky/ox-zero/pull/16)), so leaving the sandbox open can exhaust an 8 GB machine within a minute. Needs a `docs/cli.md` change; a cap near 50k simulations is about 1.5 GB at 29 KB per expansion. | Design discussion | Before the sandbox is used for long sessions; the array-based tree shrinks each simulation but does not bound the total |
+| **Trimmed benchmark opening set**: drop the proven-lost second ring (44 of 64 openings on 8x8), or weight toward edges and corners | Cheaper benchmarks at a small loss of information; never a narrower interval. Changes the rating scale, so it needs a new match log. | [Experiment 02](../experiments/02-benchmark-openings.md) | When the benchmark moves to a larger board (12x12: 144 openings, longer games) and its cost starts to hurt; 8x8 keeps the full set |
 
 ## Not yet discussed
 
