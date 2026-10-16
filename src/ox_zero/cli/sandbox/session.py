@@ -32,8 +32,9 @@ from ox_zero.game import (
 )
 
 HELP = (
-    "row,col play · undo · redo · pause · resume · load <position> · reset · export · quit"
-    "   (keys: ctrl+z undo, ctrl+y redo, ctrl+p pause, ctrl+q quit; click a cell to play)"
+    "row,col play · undo · redo · pause · resume · hide · show · load <position> · reset · export · quit"
+    "   (keys: ctrl+z undo, ctrl+y redo, ctrl+p pause, ctrl+t hide/show, ctrl+q quit;"
+    " click a cell to play)"
 )
 
 
@@ -62,13 +63,19 @@ _CHANGED = Result(position_changed=True)
 
 
 class Session:
-    """A position with undo/redo history and the analysis pause switch."""
+    """A position with undo/redo history and two analysis switches.
+
+    `paused` stops the search. `hidden` only suppresses the display: the search
+    keeps running, so revealing the analysis is instant. They are independent,
+    and neither is touched by moving through the history.
+    """
 
     def __init__(self, start: State, moves: Sequence[Cell] = ()) -> None:
         self._reset_to(start)
         for move in moves:
             self._push(move)
         self.paused = False
+        self.hidden = False
 
     @classmethod
     def from_tokens(cls, tokens: Sequence[str], size: int = BOARD_SIZE) -> Session:
@@ -144,6 +151,16 @@ class Session:
                     return Result(message="analysis is already running")
                 self.paused = False
                 return Result()
+            case "hide":
+                if self.hidden:
+                    return Result(message="analysis is already hidden")
+                self.hidden = True
+                return Result()
+            case "show":
+                if not self.hidden:
+                    return Result(message="analysis is already shown")
+                self.hidden = False
+                return Result()
             case "load":
                 return self.load(args)
             case "reset":
@@ -198,6 +215,9 @@ class Session:
 
     def toggle_pause(self) -> None:
         self.paused = not self.paused
+
+    def toggle_hidden(self) -> None:
+        self.hidden = not self.hidden
 
     # --- Internals ------------------------------------------------------------
 

@@ -5,7 +5,7 @@ The commands are specified in docs/cli.md, `sandbox` section.
 
 import pytest
 
-from ox_zero.cli.sandbox.session import Session
+from ox_zero.cli.sandbox.session import HELP, Session
 from ox_zero.game import Mark, PositionError, initial_state, play, to_board_string
 
 
@@ -255,3 +255,61 @@ def test_help_lists_commands():
 def test_history_text_numbers_move_pairs():
     assert session("5,5", "6,6", "5,6").history_text() == "1. 5,5 6,6  2. 5,6"
     assert session().history_text() == ""
+
+
+# --- Hide / show -------------------------------------------------------------
+
+
+def test_a_new_session_is_not_hidden():
+    assert not session().hidden
+
+
+def test_hide_and_show_only_flip_the_flag():
+    s = session("5,5")
+    for command, expected in [("hide", True), ("show", False)]:
+        result = s.execute(command)
+        assert s.hidden is expected
+        assert not result.position_changed and not result.error
+        assert s.history == [(5, 5)]
+
+
+def test_repeating_hide_or_show_is_a_message_not_an_error():
+    s = session()
+    assert "already shown" in (s.execute("show").message or "")
+    s.execute("hide")
+    result = s.execute("hide")
+    assert "already hidden" in (result.message or "")
+    assert not result.error
+
+
+def test_toggle_hidden():
+    s = session()
+    s.toggle_hidden()
+    assert s.hidden
+    s.toggle_hidden()
+    assert not s.hidden
+
+
+@pytest.mark.parametrize("command", ["6,6", "undo", "redo", "load 1,1 2,2", "reset"])
+def test_hidden_survives_position_changes(command):
+    s = session("5,5", "6,6")
+    s.execute("undo")  # so that `redo` has something to redo
+    s.execute("hide")
+    s.execute(command)
+    assert s.hidden
+
+
+def test_hidden_and_paused_are_independent():
+    s = session()
+    s.execute("hide")
+    s.execute("pause")
+    assert s.hidden and s.paused
+    s.execute("resume")
+    assert s.hidden and not s.paused
+    s.execute("pause")
+    s.execute("show")
+    assert not s.hidden and s.paused
+
+
+def test_help_mentions_hide_show_and_the_shortcut():
+    assert all(word in HELP for word in ("hide", "show", "ctrl+t"))
