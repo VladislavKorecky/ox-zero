@@ -13,12 +13,15 @@ These measure the *game*; training experiments are recorded in [docs/experiments
 | `random_play.py` | Game length, outcome rates, and legal moves per decision under random and one-ply greedy play, for boards 3x3 to 12x12 | ~4 min |
 | `solve_boards.py` | Exact value, optimal first moves, positions searched, one optimal line, and the length distribution of sampled optimal games for the empty 3x3 and 4x4 boards, using `ox_zero.game.Solver` | ~25 s |
 | `safe_moves.py` | How many *safe* moves (not losing on the spot) remain at each move number under greedy play, for 6x6, 8x8 and 12x12 | ~4 min |
+| `opening_outcomes.py` | Per-opening outcomes of near-strength network pairings, by opening class (corner, edge, second ring, interior): X's win rate and how often an opening's pair of games is informative. Measures trained checkpoints, so its results are recorded in docs/experiments/ | ~9 min on 8x8, `mps` |
+| `forced_openings.py` | Which first moves of X lose by force within `--moves` O moves (bounded AND/OR search, every defence tried), with one principal line per lost opening, for 8x8 and 12x12 | ~6 min |
 
 ```bash
 uv run python scripts/experiments/random_play.py           # all sizes, both policies, seed 0
 uv run python scripts/experiments/random_play.py --sizes 6 --games 500 --policy greedy
 uv run python scripts/experiments/solve_boards.py          # 3x3 and 4x4
 uv run python scripts/experiments/safe_moves.py            # 6x6, 8x8, 12x12, 500 greedy games each
+uv run python scripts/experiments/forced_openings.py       # 8x8 and 12x12, forced wins within 4 O moves
 ```
 
 `safe_moves.py` imports the greedy policy from `random_play.py`; run it from the repository root as shown.

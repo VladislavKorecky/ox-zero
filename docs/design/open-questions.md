@@ -189,6 +189,35 @@ Reasoning written down after the run so it is not lost. A hypothesis, not a resu
 - **`K = 10` seems fine:** nothing in the run points at stale data or too little of it.
 - **Steps per generation could rise**, since the loss was still falling at generation 20.
 
+## Results (2026-10-12): forced openings
+
+Prompted by Vláďa's observation from his own games that X's first move at 1,1 (and its mirrors) is a guaranteed loss, because O can attack from the edge, where X cannot use O's marks. Measured with `scripts/experiments/forced_openings.py` (bounded AND/OR search: O tries every move within distance 2 of a mark, X every reply, with forced blocks and double threats; in this configuration and with every cell a candidate it agrees with the exact solver on every 3x3 and 4x4 opening). Output in `scripts/experiments/results/forced_openings.json`.
+
+**The whole second ring loses.** Every cell one step in from the edge is a forced loss for X within 4 O moves, on both boards (`L`, 8x8 shown; 12x12 has the same ring, 36 cells):
+
+```
+. . . . . . . .
+. L L L L L L .
+. L . . . . L .
+. L . . . . L .
+. L . . . . L .
+. L . . . . L .
+. L L L L L L .
+. . . . . . . .
+```
+
+For corners, edges and the interior the search found no forced loss within 5 O moves on 8x8 (`results/forced_openings.8x8-moves5.json`) and within 4 on 12x12, among O moves within distance 2 of a mark. Not a proof of safety: a longer win, or one that starts with a far-off setup move, is not searched.
+
+Principal lines (O's fastest win against X's longest defence; X's replies are forced blocks unless marked):
+
+- **1,1** (3 O moves): O 0,1, X 2,1; O 1,0 (double threat: 1,2 and 3,2), X 1,2; O 2,3 completes 0,1 → 1,2 → 2,3 (`OXO`).
+- **1,2** (3 O moves): O 0,3, X 2,1; O 1,0, X 3,2; O 2,2 completes 1,2 → 2,2 → 3,2 (`XOX`, O in the middle).
+- **1,3** (4 O moves): O 0,2, X 2,4; O 3,2 (quiet: no threat, X free, every one of X's replies loses), X 0,0; O 0,3, X 2,3; O 1,4 completes 3,2 → 2,3 → 1,4 (`OXO`). Further along the ring (1,4 and 1,5 on 12x12) the same pattern shifted.
+
+**Why.** O attacks from the edge. The line through an edge mark and X's mark points off the board, so X can never extend O's mark into an `X O _` threat of its own, while every forced X block lands where O can use it: either the middle of an O line or one end of an `X _ X` that O fills.
+
+**What it means for the benchmark** is measured in [experiment 02](../experiments/02-benchmark-openings.md): how informative each class of opening is when near-strength 8x8 networks play it.
+
 ## Decisions (2026-09-27)
 
 Recorded in the files they belong to; summarised here so the trail from number to decision is in one place.

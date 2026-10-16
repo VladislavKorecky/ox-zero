@@ -1,0 +1,13 @@
+{
+  "parameters": {
+    "checkpoints": [
+      "runs/eight-a/gen_030.pt",
+      "runs/eight-b/gen_030.pt",
+      "runs/eight-c/gen_030.pt",
+      "runs/eight-d/gen_030.pt"
+    ],
+    "device": "mps",
+    "simulations": 100
+  },
+  "seconds": 509.9
+}

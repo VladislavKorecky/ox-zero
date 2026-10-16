@@ -41,5 +41,6 @@ uv run python scripts/compare_runs.py runs/<arm>-s*
 | # | Experiment | Verdict | Date |
 |---|---|---|---|
 | [01](01-testbed-and-noise-floor.md) | Testbed and noise floor | 8x8 is the testbed; noise floor about 50 Elo | 2026-10-12 |
+| [02](02-benchmark-openings.md) | How informative is each benchmark opening | Edges and corners most informative; trimming openings cannot shrink the interval | 2026-10-12 |
 
 The benchmark's reference pools are recorded in [pools.md](pools.md).

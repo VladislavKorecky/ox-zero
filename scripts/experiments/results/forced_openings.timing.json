@@ -1,0 +1,20 @@
+{
+  "parameters": {
+    "sizes": [
+      8,
+      12
+    ],
+    "moves": 4,
+    "radius": 2
+  },
+  "timing": [
+    {
+      "size": 8,
+      "seconds": 37.7
+    },
+    {
+      "size": 12,
+      "seconds": 335.7
+    }
+  ]
+}
